@@ -1,3 +1,4 @@
+//===-- LocalOpts.cpp - Example Transformations --------------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -76,7 +77,7 @@ bool runOnBasicBlock(BasicBlock &B) {
                 Value *Op2 = MultInst->getOperand(1);
                 ConstantInt *CI = nullptr;
 
-                // check for mul by 15 (2^4 - 1)
+                // check for mul by 15 (2^4 - 1) -> x*15 or 15*x
                 if (((CI == dyn_cast<ConstantInt>(Op1)) && CI->getValue() == 15) ||
                     ((CI == dyn_cast<ConstantInt>(Op2)) && CI->getValue() == 15)) {
                         // change x*15 to (x<<4) - x
@@ -103,6 +104,37 @@ bool runOnBasicBlock(BasicBlock &B) {
                 }
             }
         }
+
+        /* THIRD ASSIGNMENT -> MULTI-INSTRUCTION OPTIMIZATION */
+        if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
+            // check for addition with 1
+            if (AddInst->getOpcode() == Instruction::Add) {
+                Value *Op1 = AddInst->getOperand(0);
+                ConstantInt *CI = dyn_cast<ConstantInt>(AddInst->getOperand(1));
+                if (CI && CI->isOne()) {
+                    // look for the next instruction to be a substraction
+                    Instruction *NextI = I.getNextNode();
+                    if (NextI){
+                        if (auto *SubInst = dyn_cast<BinaryOperator>(NextI)) {
+                            if (SubInst->getOpcode() == Instruction::Sub) {
+                                Value *SubOp1 = SubInst->getOperand(0);
+                                ConstantInt *SubCI = dyn_cast<ConstantInt>(SubInst->getOperand(1));
+                                // check if the sub is undoing the addition (the pattern)
+                                if (SubOp1 == AddInst && SubCI && SubCI->isOne()) {
+                                    // replace uses of the sub with the original operand of the add
+                                    SubInst->replaceAllUsesWith(Op1);
+                                    // erase sub instruction
+                                    SubInst->eraseFromParent();
+                                    AddInst->eraseFromParent(); // core dumps here
+                                    Modified = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
     }
     return Modified;
 }
@@ -123,12 +155,10 @@ bool runOnFunction(Function &F) {
 }
 
 
-PreservedAnalyses LocalOpts::run(Module &M,
-                                      ModuleAnalysisManager &AM) {
+PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
   for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter)
     if (runOnFunction(*Fiter))
       return PreservedAnalyses::none();
   
   return PreservedAnalyses::all();
 }
-

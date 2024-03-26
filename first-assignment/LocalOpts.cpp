@@ -9,6 +9,7 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
+#include <map>
 
 using namespace llvm;
 
@@ -23,7 +24,7 @@ bool optBasicSR(Instruction &I) {
     ConstantInt *CI = nullptr;
 
     // Warning: this lambda has a side effect
-    auto isConstPowOf2 = [&CI](auto &op) mutable {
+    auto isConstPowOf2 = [&CI](auto &op) {
         return (CI = dyn_cast<ConstantInt>(op))
             and CI->getValue().isPowerOf2()
             and CI->getValue() != 1;
@@ -74,14 +75,14 @@ bool optAlgId(Instruction &I) {
     std::function<bool(Value*)> isNeutralConstant;
 
     if (OpCode == Instruction::Mul) {
-        isNeutralConstant = [&CI] (Value *op) mutable {
+        isNeutralConstant = [&CI] (Value *op) {
             return (CI = dyn_cast<ConstantInt>(op))
                 and CI->isOne();
         };
     }
     
     if (OpCode == Instruction::Add) {
-        isNeutralConstant = [&CI] (Value *op) mutable {
+        isNeutralConstant = [&CI] (Value *op) {
             return (CI = dyn_cast<ConstantInt>(op))
                 and CI->isZero();
         };
@@ -112,20 +113,21 @@ bool optAdvSR(Instruction &I) {
     // Check if op is a constant integer and can be turned into
     // a power of 2 with 1 sum
     // Warning: this lambda has a side effect
-    auto isPow2MinusOne = [&CI](Value *op) mutable {
+    auto isPow2MinusOne = [&CI](Value *op) {
         return (CI = dyn_cast<ConstantInt>(op))
             and APInt(CI->getValue() + 1).isPowerOf2();
     };
 
     // Check if op is a constant integer and can be turned into
     // a power of 2 with 1 subtraction
-    auto isPow2PlusOne = [&CI](Value *op) mutable {
+    auto isPow2PlusOne = [&CI](Value *op) {
         return (CI = dyn_cast<ConstantInt>(op))
             and APInt(CI->getValue() - 1).isPowerOf2();
     };
 
-    auto isAlmostPow2 = [&isPow2PlusOne, &isPow2MinusOne](Value *op)
-        mutable { return isPow2PlusOne(op) or isPow2MinusOne(op); };
+    auto isAlmostPow2 = [&isPow2PlusOne, &isPow2MinusOne](Value *op) {
+        return isPow2PlusOne(op) or isPow2MinusOne(op);
+    };
 
     if (isAlmostPow2(Op1)) std::swap(Op1, Op2);
     if (not isAlmostPow2(Op2)) return false;
@@ -162,37 +164,60 @@ bool optAdvSR(Instruction &I) {
 }
 
 bool optMultiInstr(Instruction &I) {
-    if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
-        // check for addition with 1
-        if (AddInst->getOpcode() == Instruction::Add) {
-            Value *Op1 = AddInst->getOperand(0);
-            ConstantInt *CI = dyn_cast<ConstantInt>(AddInst->getOperand(1));
-            if (CI && CI->isOne()) {
-                // look for the next instruction to be a substraction
-                Instruction *NextI = I.getNextNode();
-                if (NextI){
-                    if (auto *SubInst = dyn_cast<BinaryOperator>(NextI)) {
-                        if (SubInst->getOpcode() == Instruction::Sub) {
-                            Value *SubOp1 = SubInst->getOperand(0);
-                            ConstantInt *SubCI = dyn_cast<ConstantInt>(SubInst->getOperand(1));
-                            // check if the sub is undoing the addition (the pattern)
-                            if (SubOp1 == AddInst && SubCI && SubCI->isOne()) {
-                                errs() << "Triggered advanced multi-instr optimization\n";
+    auto OpCode = I.getOpcode();
 
-                                // replace uses of the sub with the original operand of the add
-                                SubInst->replaceAllUsesWith(Op1);
-                                // erase sub instruction
-                                // SubInst->eraseFromParent();
-                                // AddInst->eraseFromParent(); // core dumps here
-                                return true;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    if (
+        OpCode != Instruction::Add
+        and OpCode != Instruction::Mul
+        and OpCode != Instruction::Sub
+        and OpCode != Instruction::UDiv
+    ) return false;
     
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
+    ConstantInt *CI = nullptr;
+    
+    // No users of this instruction
+    if (I.use_begin() == I.use_end()) return false;
+
+    Instruction *NextInstr = dyn_cast<Instruction>(I.use_begin()->getUser());
+
+    errs() << NextInstr->getOpcodeName() << "\n";
+
+    Value *NextUserOp1 = NextInstr->getOperand(0);
+    Value *NextUserOp2 = NextInstr->getOperand(1);
+    ConstantInt *NextUserCI = nullptr;
+
+    auto isConstant = [](Value *op, ConstantInt* &CI) {
+        return (CI = dyn_cast<ConstantInt>(op));
+    };
+
+    if (isConstant(Op1, CI)) std::swap(Op1, Op2);
+    if (not isConstant(Op2, CI)) return false;
+
+    if (isConstant(NextUserOp1, NextUserCI)) std::swap(NextUserOp1, NextUserOp2);
+    if (not isConstant(NextUserOp2, NextUserCI)) return false;
+
+    // Invariant code wrt operands order
+
+    if (CI->getValue() != NextUserCI->getValue()) return false;
+
+    errs() << "Triggered multi-instruction optimization\n";
+
+    // Map of inverse operations
+    const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOps = {
+        {Instruction::Add, Instruction::Sub},
+        {Instruction::Sub, Instruction::Add},
+        {Instruction::Mul, Instruction::UDiv},
+        {Instruction::UDiv, Instruction::Mul}
+    };
+    
+    // If current current instr and next user operations are the opposite
+    if (InverseOps.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == NextInstr->getOpcode()) {
+        NextInstr->replaceAllUsesWith(Op1);
+        return true;
+    }
+
     return false;
 }
 
@@ -201,11 +226,11 @@ bool runOnBasicBlock(BasicBlock &B) {
     for (auto &I : B) {
         // Comment one of the following lines to disable the respective optimization
         modified =
-            optBasicSR(I)
+            modified
+            | optBasicSR(I)
             | optAlgId(I)
             | optAdvSR(I)
-            // | optMultiInstr(I)
-            | modified;
+            | optMultiInstr(I);
     }
 
     errs() << (modified ? "IR has been modified" : "Nothing has been modified") << "\n";

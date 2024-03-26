@@ -15,7 +15,6 @@ using namespace llvm;
 bool runOnBasicBlock(BasicBlock &B) {
     bool Modified = false;
     for (auto &I : B) {
-
         /* FIRST ASSIGNMENT -> ALGEBRAIC IDENTITY */
         if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
             if (AddInst->getOpcode() == Instruction::Add) {
@@ -47,7 +46,7 @@ bool runOnBasicBlock(BasicBlock &B) {
                     // do nothing
                 } 
                 else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->getValue().isPowerOf2()) {
-                    // swap operands in order to have the power of 2 as the second operand (better for optimization)
+                    // swap operands in order to have the power of 2 as the first operand (better for optimization)
                     std::swap(Op1, Op2);
                 } 
                 else {
@@ -58,7 +57,7 @@ bool runOnBasicBlock(BasicBlock &B) {
                 unsigned ShiftAmount = CI->getValue().logBase2();
 
                 // create a new shift instruction
-                Instruction *ShlInst = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), ShiftAmount));
+                Instruction *ShlInst = BinaryOperator::CreateShl(Op2, ConstantInt::get(CI->getType(), ShiftAmount));
                 ShlInst->insertAfter(MulInst);
                 MulInst->replaceAllUsesWith(ShlInst);
                 ShlInst->setDebugLoc(MulInst->getDebugLoc());

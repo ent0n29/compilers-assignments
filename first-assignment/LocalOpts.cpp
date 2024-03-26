@@ -15,7 +15,6 @@ using namespace llvm;
 bool runOnBasicBlock(BasicBlock &B) {
     bool Modified = false;
     for (auto &I : B) {
-
         /* FIRST ASSIGNMENT -> ALGEBRAIC IDENTITY */
         if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
             if (AddInst->getOpcode() == Instruction::Add) {
@@ -23,11 +22,13 @@ bool runOnBasicBlock(BasicBlock &B) {
                 Value *Op2 = AddInst->getOperand(1);
                 ConstantInt *CI = nullptr;
                 if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->isZero()) {
+                    errs() << "Triggered algebraic ID\n";
                     AddInst->replaceAllUsesWith(Op2);
                     AddInst->eraseFromParent();
                     Modified = true;
                 }
                 else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->isZero()) {
+                    errs() << "Triggered algebraic ID\n";
                     AddInst->replaceAllUsesWith(Op1);
                     AddInst->eraseFromParent();
                     Modified = true;
@@ -47,18 +48,20 @@ bool runOnBasicBlock(BasicBlock &B) {
                     // do nothing
                 } 
                 else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->getValue().isPowerOf2()) {
-                    // swap operands in order to have the power of 2 as the second operand (better for optimization)
+                    // swap operands in order to have the power of 2 as the first operand (better for optimization)
                     std::swap(Op1, Op2);
                 } 
                 else {
                     continue;
                 }
 
+                errs() << "Triggered mul pow of 2 to shift\n";
+
                 // shift amount calculation using the log2 of the constant
                 unsigned ShiftAmount = CI->getValue().logBase2();
 
                 // create a new shift instruction
-                Instruction *ShlInst = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), ShiftAmount));
+                Instruction *ShlInst = BinaryOperator::CreateShl(Op2, ConstantInt::get(CI->getType(), ShiftAmount));
                 ShlInst->insertAfter(MulInst);
                 MulInst->replaceAllUsesWith(ShlInst);
                 ShlInst->setDebugLoc(MulInst->getDebugLoc());
@@ -80,6 +83,7 @@ bool runOnBasicBlock(BasicBlock &B) {
                 // check for mul by 15 (2^4 - 1) -> x*15 or 15*x
                 if (((CI == dyn_cast<ConstantInt>(Op1)) && CI->getValue() == 15) ||
                     ((CI == dyn_cast<ConstantInt>(Op2)) && CI->getValue() == 15)) {
+                        errs() << "Triggered mul advanced strength reduction\n";
                         // change x*15 to (x<<4) - x
                         Value *Shifted = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), 4), "", MultInst);
                         Instruction *Sub = BinaryOperator::CreateSub(Shifted, Op1, "", MultInst);
@@ -96,6 +100,7 @@ bool runOnBasicBlock(BasicBlock &B) {
 
                 // check for division by 8 (2^3)
                 if ((CI = dyn_cast<ConstantInt>(DivInst->getOperand(1))) && CI->getValue() == 8) {
+                    errs() << "Triggered div advanced strength reduction\n";
                     // implement x/8 as x>>3
                     Instruction *ShrInst = BinaryOperator::CreateLShr(Op1, ConstantInt::get(CI->getType(), 3), "", DivInst);
                     DivInst->replaceAllUsesWith(ShrInst);
@@ -121,6 +126,8 @@ bool runOnBasicBlock(BasicBlock &B) {
                                 ConstantInt *SubCI = dyn_cast<ConstantInt>(SubInst->getOperand(1));
                                 // check if the sub is undoing the addition (the pattern)
                                 if (SubOp1 == AddInst && SubCI && SubCI->isOne()) {
+                                    errs() << "Triggered advanced multi-instr optimization\n";
+
                                     // replace uses of the sub with the original operand of the add
                                     SubInst->replaceAllUsesWith(Op1);
                                     // erase sub instruction

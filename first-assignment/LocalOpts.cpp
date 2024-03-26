@@ -13,7 +13,8 @@
 using namespace llvm;
 
 bool optBasicSR(Instruction &I) {
-    if (I.getOpcode() != Instruction::Mul) return false;
+    bool Modified = false;
+    if (I.getOpcode() != Instruction::Mul) return Modified;
 
     BinaryOperator *MulInst = dyn_cast<BinaryOperator>(&I);
 
@@ -30,7 +31,7 @@ bool optBasicSR(Instruction &I) {
         std::swap(Op1, Op2);
     } 
     else {
-        return false;
+        return Modified;
     }
 
     errs() << "Triggered mul pow of 2 to shift\n";
@@ -46,12 +47,13 @@ bool optBasicSR(Instruction &I) {
 
     // erase the original multiplication instruction
     // MulInst->eraseFromParent();
-
-    return true;
+    Modified = True;
+    return Modified;
 }
 
 bool optAlgId(Instruction &I) {
-    if (I.getOpcode() != Instruction::Add) return false;
+    bool Modified = false;
+    if (I.getOpcode() != Instruction::Add) return Modified;
     
     BinaryOperator *AddInst = dyn_cast<BinaryOperator>(&I);
 
@@ -62,21 +64,24 @@ bool optAlgId(Instruction &I) {
     if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->isZero()) {
         errs() << "Triggered algebraic ID\n";
         AddInst->replaceAllUsesWith(Op2);
-        // AddInst->eraseFromParent();
-        return true;
+        AddInst->eraseFromParent();
+        Modified = true;
+        return Modified;
     }
     else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->isZero()) {
         errs() << "Triggered algebraic ID\n";
         AddInst->replaceAllUsesWith(Op1);
-        // AddInst->eraseFromParent();
-        return true;
+        AddInst->eraseFromParent();
+        Modified = true;
+        return Modified;
     }
     
-    return false;
+    return Modified;
 }
 
 bool optAdvSR(Instruction &I) {
-    if (I.getOpcode() != Instruction::Mul and I.getOpcode() != Instruction::UDiv) return false;
+    bool Modified = false;
+    if (I.getOpcode() != Instruction::Mul and I.getOpcode() != Instruction::UDiv) return Modified;
 
     if (I.getOpcode() == Instruction::Mul) {
         BinaryOperator *MultInst = dyn_cast<BinaryOperator>(&I);
@@ -93,8 +98,9 @@ bool optAdvSR(Instruction &I) {
                 Value *Shifted = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), 4));
                 Instruction *Sub = BinaryOperator::CreateSub(Shifted, Op1);
                 MultInst->replaceAllUsesWith(Sub);
-                // MultInst->eraseFromParent();
-                return true;
+                MultInst->eraseFromParent();
+                Modified = True;
+                return Modified;
         }
     }
     if (I.getOpcode() == Instruction::UDiv) {
@@ -109,15 +115,17 @@ bool optAdvSR(Instruction &I) {
             // implement x/8 as x>>3
             Instruction *ShrInst = BinaryOperator::CreateLShr(Op1, ConstantInt::get(CI->getType(), 3));
             DivInst->replaceAllUsesWith(ShrInst);
-            // DivInst->eraseFromParent();
-            return true;
+            DivInst->eraseFromParent();
+            Modified = true;
+            return Modified;
         }
     }
 
-    return false;
+    return Modified;
 }
 
 bool optMultiInstr(Instruction &I) {
+    bool Modified = false;
     if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
         // check for addition with 1
         if (AddInst->getOpcode() == Instruction::Add) {
@@ -138,9 +146,12 @@ bool optMultiInstr(Instruction &I) {
                                 // replace uses of the sub with the original operand of the add
                                 SubInst->replaceAllUsesWith(Op1);
                                 // erase sub instruction
-                                // SubInst->eraseFromParent();
-                                // AddInst->eraseFromParent(); // core dumps here
-                                return true;
+                                SubInst->eraseFromParent();
+                                AddInst->removeFromParent();
+                                AddInst->dropAllReferences();
+                                AddInst->deleteValue();
+                                Modified = true;
+                                return Modified;
                             }
                         }
                     }
@@ -148,24 +159,23 @@ bool optMultiInstr(Instruction &I) {
             }
         }
     }
-    
-    return false;
+    return Modified;
 }
 
 bool runOnBasicBlock(BasicBlock &B) {
-    bool modified = false;
+    bool Modified = false;
     for (auto &I : B) {
         modified =
             optBasicSR(I)
             | optAlgId(I)
-            // | optAdvSR(I)
-            // | optMultiInstr(I)
+            | optAdvSR(I)
+            | optMultiInstr(I)
             | modified;
     }
 
     errs() << (modified ? "IR has been modified" : "Nothing has been modified") << "\n";
 
-    return modified;
+    return Modified;
 }
 
 
@@ -183,11 +193,12 @@ bool runOnFunction(Function &F) {
   return Transformed;
 }
 
-
 PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-  for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter)
-    if (runOnFunction(*Fiter))
-      return PreservedAnalyses::none();
-  
-  return PreservedAnalyses::all();
+  bool Modified = false;
+
+  for (auto F = M.begin(); F != M.end(); ++F) {
+    Modified = Modified | runOnFunction(*F);
+  }
+
+  return Modified ? PreservedAnalyses::all() : PreservedAnalyses::none();
 }

@@ -7,10 +7,10 @@ Various optimizations passes leveraging the LLVM IR.
 Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto durante il LAB 2) che realizzano le seguenti ottimizzazioni locali:
  
  1. Algebraic Identity
-	$\newline
-  x + 0 = 0 + x \Rightarrow x\newline
-  x \times 1 = 1 \times x \Rightarrow x
-  $
+
+	$x + 0 = 0 + x \Rightarrow x$
+  
+  $x \times 1 = 1 \times x \Rightarrow x$
 
  2. Strength Reduction (più avanzato)
 	$\\

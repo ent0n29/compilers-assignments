@@ -13,11 +13,13 @@
 using namespace llvm;
 
 bool optBasicSR(Instruction &I) {
-    if (I.getOpcode() != Instruction::Mul) return false;
-    auto *MulInst = &I;
+    auto OpCode = I.getOpcode();
 
-    Value *Op1 = MulInst->getOperand(0);
-    Value *Op2 = MulInst->getOperand(1);
+
+    if (OpCode != Instruction::Mul and OpCode != Instruction::UDiv) return false;
+
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
     // Warning: this lambda has a side effect
@@ -27,8 +29,13 @@ bool optBasicSR(Instruction &I) {
             and CI->getValue() != 1;
     };
 
-    if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
-    if (not isConstPowOf2(Op2)) return false;
+    if (OpCode == Instruction::Mul) {
+        if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
+        if (not isConstPowOf2(Op2)) return false;
+    }
+    else if (OpCode == Instruction::UDiv) {
+        if (not isConstPowOf2(Op2)) return false;
+    }
 
     // If we reach this point, Op2 is always a constant integer, power of 2
     // The following code in hence invariant wrt operands order
@@ -39,11 +46,15 @@ bool optBasicSR(Instruction &I) {
     unsigned ShiftAmount = CI->getValue().logBase2();
 
     // Create a new shift instruction
-    Instruction *ShlInst = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), ShiftAmount));
+    Instruction::BinaryOps ShiftType = 
+        OpCode == Instruction::Mul ? Instruction::Shl : Instruction::LShr;
+    Instruction *ShiftInst = BinaryOperator::Create(
+        ShiftType,
+        Op1, ConstantInt::get(CI->getType(), ShiftAmount)
+    );
     
-    ShlInst->insertAfter(MulInst);
-    MulInst->replaceAllUsesWith(ShlInst);
-    ShlInst->setDebugLoc(MulInst->getDebugLoc());
+    ShiftInst->insertAfter(&I);
+    I.replaceAllUsesWith(ShiftInst);
 
     return true;
 }
@@ -206,25 +217,25 @@ bool runOnBasicBlock(BasicBlock &B) {
 
 
 bool runOnFunction(Function &F) {
-  errs() << "\nRunning on function: " << F.getName() << "\n";
-  bool Transformed = false;
+    errs() << "\nRunning on function: " << F.getName() << "\n";
+    bool Transformed = false;
 
-  for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
-    if (runOnBasicBlock(*Iter)) {
-      Transformed = true;
+    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
+        if (runOnBasicBlock(*Iter)) {
+            Transformed = true;
+        }
     }
-  }
 
-  return Transformed;
+    return Transformed;
 }
 
 
 PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-  bool modified = false;
+    bool modified = false;
 
-  for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
-    modified = modified | runOnFunction(*Fiter);
-  }
+    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
+        modified = modified | runOnFunction(*Fiter);
+    }
 
-  return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
+    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

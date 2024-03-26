@@ -113,7 +113,7 @@ bool runOnBasicBlock(BasicBlock &B) {
                 ConstantInt *CI = dyn_cast<ConstantInt>(AddInst->getOperand(1));
                 if (CI && CI->isOne()) {
                     // look for the next instruction to be a substraction
-                    Instruction *NextI = I.getNextNode();
+                    Instruction *NextI = AddInst->getNextNode();
                     if (NextI){
                         if (auto *SubInst = dyn_cast<BinaryOperator>(NextI)) {
                             if (SubInst->getOpcode() == Instruction::Sub) {
@@ -125,8 +125,10 @@ bool runOnBasicBlock(BasicBlock &B) {
                                     SubInst->replaceAllUsesWith(Op1);
                                     // erase sub instruction
                                     SubInst->eraseFromParent();
-                                    AddInst->eraseFromParent(); // core dumps here
+                                    AddInst->eraseFromParent();
                                     Modified = true;
+                                    // break the loop immediately after the erase
+                                    return Modified;
                                 }
                             }
                         }
@@ -134,7 +136,6 @@ bool runOnBasicBlock(BasicBlock &B) {
                 }
             }
         }
-
     }
     return Modified;
 }

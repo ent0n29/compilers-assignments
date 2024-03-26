@@ -14,38 +14,33 @@ using namespace llvm;
 
 bool optBasicSR(Instruction &I) {
     if (I.getOpcode() != Instruction::Mul) return false;
-
-    BinaryOperator *MulInst = dyn_cast<BinaryOperator>(&I);
+    auto *MulInst = &I;
 
     Value *Op1 = MulInst->getOperand(0);
     Value *Op2 = MulInst->getOperand(1);
     ConstantInt *CI = nullptr;
 
-    // check if operand is a power of 2
-    if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->getValue().isPowerOf2() && CI->getValue() != 1) {
-        // do nothing
-    } 
-    else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->getValue().isPowerOf2() && CI->getValue() != 1) {
-        // swap operands in order to have the power of 2 as the first operand (better for optimization)
-        std::swap(Op1, Op2);
-    } 
-    else {
-        return false;
-    }
+    auto isConstPowOf2 = [&CI](auto &op) mutable {
+        return (CI = dyn_cast<ConstantInt>(op)) and CI->getValue().isPowerOf2();
+    };
+
+    if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
+    if (not isConstPowOf2(Op2)) return false;
+
+    // If we reach this point, Op2 is always a constant integer, power of 2
+    // The following code in hence invariant wrt operands order
 
     errs() << "Triggered mul pow of 2 to shift\n";
 
-    // shift amount calculation using the log2 of the constant
+    // Shift amount calculation using the log2 of the constant
     unsigned ShiftAmount = CI->getValue().logBase2();
 
-    // create a new shift instruction
-    Instruction *ShlInst = BinaryOperator::CreateShl(Op2, ConstantInt::get(CI->getType(), ShiftAmount));
+    // Create a new shift instruction
+    Instruction *ShlInst = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), ShiftAmount));
+    
     ShlInst->insertAfter(MulInst);
     MulInst->replaceAllUsesWith(ShlInst);
     ShlInst->setDebugLoc(MulInst->getDebugLoc());
-
-    // erase the original multiplication instruction
-    // MulInst->eraseFromParent();
 
     return true;
 }
@@ -172,6 +167,7 @@ bool runOnBasicBlock(BasicBlock &B) {
 
 
 bool runOnFunction(Function &F) {
+  errs() << "\nRunning on function: " << F.getName() << "\n";
   bool Transformed = false;
 
   for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
@@ -185,9 +181,11 @@ bool runOnFunction(Function &F) {
 
 
 PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-  for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter)
-    if (runOnFunction(*Fiter))
-      return PreservedAnalyses::none();
-  
-  return PreservedAnalyses::all();
+  bool modified = false;
+
+  for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
+    modified = modified | runOnFunction(*Fiter);
+  }
+
+  return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

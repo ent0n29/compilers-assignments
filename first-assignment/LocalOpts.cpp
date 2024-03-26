@@ -21,7 +21,9 @@ bool optBasicSR(Instruction &I) {
     ConstantInt *CI = nullptr;
 
     auto isConstPowOf2 = [&CI](auto &op) mutable {
-        return (CI = dyn_cast<ConstantInt>(op)) and CI->getValue().isPowerOf2();
+        return (CI = dyn_cast<ConstantInt>(op))
+            and CI->getValue().isPowerOf2()
+            and CI->getValue() != 1;
     };
 
     if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
@@ -46,28 +48,43 @@ bool optBasicSR(Instruction &I) {
 }
 
 bool optAlgId(Instruction &I) {
-    if (I.getOpcode() != Instruction::Add) return false;
-    
-    BinaryOperator *AddInst = dyn_cast<BinaryOperator>(&I);
+    auto OpCode = I.getOpcode();
 
-    Value *Op1 = AddInst->getOperand(0);
-    Value *Op2 = AddInst->getOperand(1);
+    if (OpCode != Instruction::Add and OpCode != Instruction::Mul) return false;
+
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
-    if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->isZero()) {
-        errs() << "Triggered algebraic ID\n";
-        AddInst->replaceAllUsesWith(Op2);
-        // AddInst->eraseFromParent();
-        return true;
-    }
-    else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->isZero()) {
-        errs() << "Triggered algebraic ID\n";
-        AddInst->replaceAllUsesWith(Op1);
-        // AddInst->eraseFromParent();
-        return true;
+    // Is the operator a neutral constant of the operation?
+    // CI is set to the constant neutral operand after this function call
+    std::function<bool(Value*)> isNeutralConstant;
+
+    if (OpCode == Instruction::Mul) {
+        isNeutralConstant = [&CI] (Value *op) mutable {
+            return (CI = dyn_cast<ConstantInt>(op))
+                and CI->isOne();
+        };
     }
     
-    return false;
+    if (OpCode == Instruction::Add) {
+        isNeutralConstant = [&CI] (Value *op) mutable {
+            return (CI = dyn_cast<ConstantInt>(op))
+                and CI->isZero();
+        };
+    }
+
+    if (isNeutralConstant(Op1)) std::swap(Op1, Op2);
+    if (not isNeutralConstant(Op2)) return false;
+
+    // If we reach this point, Op2 is always a constant integer, neutral for the operation
+    // The following code in hence invariant wrt operands order
+
+    errs() << "Triggered algebraic ID\n";
+
+    I.replaceAllUsesWith(Op1);
+
+    return true;
 }
 
 bool optAdvSR(Instruction &I) {

@@ -2,7 +2,7 @@
 
 Various optimizations passes leveraging the LLVM IR.
 
-This repository contains a standalone version of the optimization passes, tested for LLVM 16. A full version of LLVM's source code, with our passes plugged-in, can be found [here](https://github.com/mc-cat-tty/llvm-17.0.6-compilers).
+This repository contains a standalone version of the optimization passes, tested for LLVM 17.0.6. A full version of LLVM's source code, with our passes plugged-in, can be found [here](https://github.com/mc-cat-tty/llvm-17.0.6-compilers).
 
 ## Primo assignment
 

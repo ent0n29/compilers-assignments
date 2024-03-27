@@ -32,7 +32,7 @@ using namespace llvm;
  * udiv %0, 8 -> lshr %0, 3
  * udiv 16, 8 -> lshr 16, 3
 */
-bool optBasicSR(Instruction &I, std::set<Instruction*> &toBeErased) {
+bool optBasicSR(Instruction &I) {
     auto OpCode = I.getOpcode();
 
     if (OpCode != Instruction::Mul and OpCode != Instruction::UDiv) return false;
@@ -74,7 +74,6 @@ bool optBasicSR(Instruction &I, std::set<Instruction*> &toBeErased) {
     
     ShiftInst->insertAfter(&I);
     I.replaceAllUsesWith(ShiftInst);
-    toBeErased.emplace(&I);
 
     return true;
 }
@@ -96,7 +95,7 @@ bool optBasicSR(Instruction &I, std::set<Instruction*> &toBeErased) {
  * add %0, 0 => %0
  * add 0, %0 => %0
 */
-bool optAlgId(Instruction &I, std::set<Instruction*> &toBeErased) {
+bool optAlgId(Instruction &I) {
     auto OpCode = I.getOpcode();
 
     if (OpCode != Instruction::Add and OpCode != Instruction::Mul) return false;
@@ -133,7 +132,6 @@ bool optAlgId(Instruction &I, std::set<Instruction*> &toBeErased) {
     errs() << "Triggered algebraic ID\n";
 
     I.replaceAllUsesWith(Op1);
-    toBeErased.emplace(&I);
 
     return true;
 }
@@ -153,7 +151,7 @@ bool optAlgId(Instruction &I, std::set<Instruction*> &toBeErased) {
  * mul 15, %0 -> %1 = shl %0, 4; sub %1, %0
  * mul 31, 8 -> %1 = shl 8, 5; sub %1, 8
 */
-bool optAdvSR(Instruction &I, std::set<Instruction*> &toBeErased) {
+bool optAdvSR(Instruction &I) {
     auto OpCode = I.getOpcode();
 
     if (OpCode != Instruction::Mul) return false;
@@ -214,7 +212,6 @@ bool optAdvSR(Instruction &I, std::set<Instruction*> &toBeErased) {
     AdjInst->insertAfter(ShftInst);
     
     I.replaceAllUsesWith(AdjInst);
-    toBeErased.emplace(&I);
 
     return true;
 }
@@ -236,7 +233,7 @@ bool optAdvSR(Instruction &I, std::set<Instruction*> &toBeErased) {
  * %2 = add i32 %0, 20; [STUFF;] %4 = sub i32 %2, 20
  * => %2 = add i32 %0, 20; [STUFF;] %4 = %0
 */
-bool optMultiInstr(Instruction &I, std::set<Instruction*> &toBeErased) {
+bool optMultiInstr(Instruction &I) {
     auto OpCode = I.getOpcode();
 
     if (OpCode != Instruction::Add and OpCode != Instruction::Sub) return false;
@@ -284,34 +281,36 @@ bool optMultiInstr(Instruction &I, std::set<Instruction*> &toBeErased) {
     errs() << "Triggered multi-instruction optimization\n";
 
     I.replaceAllUsesWith(PrevInstrOperands->first);
-    toBeErased.emplace(&I);
     
     return true;
 }
 
 bool runOnBasicBlock(BasicBlock &B) {
-    bool modified = false;
+    bool globallyModified = false;
     std::set<Instruction*> toBeErased;
 
     for (auto &I : B) {
         // Be aware that the short-circuiting property of logical OR implies
         // that for each instruction, just the first matching optimization is executed
         // Comment one of the following lines to disable the respective optimization
-        modified =
-            optBasicSR(I, toBeErased)
-            || optAlgId(I, toBeErased)
-            || optAdvSR(I, toBeErased)
-            || optMultiInstr(I, toBeErased)
-            || modified;
+        bool locallyModified =
+            optBasicSR(I)
+            || optAlgId(I)
+            || optAdvSR(I)
+            || optMultiInstr(I);
+
+        if (locallyModified) toBeErased.emplace(&I);
+        
+        globallyModified = globallyModified || locallyModified;
     }
 
-    if (modified) {
+    if (globallyModified) {
         for (auto &I : toBeErased) I->removeFromParent();
     }
 
-    errs() << (modified ? "IR has been modified" : "Nothing has been modified") << "\n";
+    errs() << (globallyModified ? "IR has been modified" : "Nothing has been modified") << "\n";
 
-    return modified;
+    return globallyModified;
 }
 
 bool runOnFunction(Function &F) {

@@ -1,5 +1,5 @@
-; ModuleID = 'multi.optimized.bc'
-source_filename = "multi_instr.ll"
+; ModuleID = '/home/enton/programming/compilers-assignments/first-assignment/tests//multi_instr.optimized.bc'
+source_filename = "/home/enton/programming/compilers-assignments/first-assignment/tests//multi_instr.ll"
 
 define i32 @test1(i32 noundef %0) {
   %2 = add i32 %0, 10

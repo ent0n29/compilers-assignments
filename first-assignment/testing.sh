@@ -1,8 +1,7 @@
 #!/bin/bash
 
-# Directory containing the .ll files
+# path to your directory containing the .ll files
 dir="$PATH_TO_YOUR_DIRECTORY/compilers-assignments/first-assignment/tests/"
-
 for file in $dir/*.ll; do
     base=$(basename $file .ll)
 
@@ -11,4 +10,5 @@ for file in $dir/*.ll; do
     llvm-dis $dir/$base.optimized.bc -o $dir/$base\_optimized.ll
 done
 
+# remove bytecode
 rm $dir/*.bc

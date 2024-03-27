@@ -1,5 +1,5 @@
-; ModuleID = 'advancedpow2.optimized.bc'
-source_filename = "advanced_pow2_sr.ll"
+; ModuleID = '/home/enton/programming/compilers-assignments/first-assignment/tests//advanced_pow2_sr.optimized.bc'
+source_filename = "/home/enton/programming/compilers-assignments/first-assignment/tests//advanced_pow2_sr.ll"
 
 define i32 @test1(i32 noundef %0) {
   %2 = shl i32 %0, 3

@@ -9,196 +9,260 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
+#include <map>
+#include <optional>
 
 using namespace llvm;
 
 bool optBasicSR(Instruction &I) {
-    bool Modified = false;
-    if (I.getOpcode() != Instruction::Mul) return Modified;
+    auto OpCode = I.getOpcode();
 
-    BinaryOperator *MulInst = dyn_cast<BinaryOperator>(&I);
 
-    Value *Op1 = MulInst->getOperand(0);
-    Value *Op2 = MulInst->getOperand(1);
+    if (OpCode != Instruction::Mul and OpCode != Instruction::UDiv) return false;
+
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
-    // check if operand is a power of 2
-    if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->getValue().isPowerOf2() && CI->getValue() != 1) {
-        // do nothing
-    } 
-    else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->getValue().isPowerOf2() && CI->getValue() != 1) {
-        // swap operands in order to have the power of 2 as the first operand (better for optimization)
-        std::swap(Op1, Op2);
-    } 
-    else {
-        return Modified;
+    // Warning: this lambda has a side effect
+    auto isConstPowOf2 = [&CI](auto &op) {
+        return (CI = dyn_cast<ConstantInt>(op))
+            and CI->getValue().isPowerOf2()
+            and CI->getValue() != 1;
+    };
+
+    if (OpCode == Instruction::Mul) {
+        if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
+        if (not isConstPowOf2(Op2)) return false;
     }
+    else if (OpCode == Instruction::UDiv) {
+        if (not isConstPowOf2(Op2)) return false;
+    }
+
+    // If we reach this point, Op2 is always a constant integer, power of 2
+    // The following code in hence invariant wrt operands order
 
     errs() << "Triggered mul pow of 2 to shift\n";
 
-    // shift amount calculation using the log2 of the constant
+    // Shift amount calculation using the log2 of the constant
     unsigned ShiftAmount = CI->getValue().logBase2();
 
-    // create a new shift instruction
-    Instruction *ShlInst = BinaryOperator::CreateShl(Op2, ConstantInt::get(CI->getType(), ShiftAmount));
-    ShlInst->insertAfter(MulInst);
-    MulInst->replaceAllUsesWith(ShlInst);
-    ShlInst->setDebugLoc(MulInst->getDebugLoc());
+    // Create a new shift instruction
+    Instruction::BinaryOps ShiftType = 
+        OpCode == Instruction::Mul ? Instruction::Shl : Instruction::LShr;
+    Instruction *ShiftInst = BinaryOperator::Create(
+        ShiftType,
+        Op1, ConstantInt::get(CI->getType(), ShiftAmount)
+    );
+    
+    ShiftInst->insertAfter(&I);
+    I.replaceAllUsesWith(ShiftInst);
 
-    // erase the original multiplication instruction
-    // MulInst->eraseFromParent();
-    Modified = True;
-    return Modified;
+    return true;
 }
 
 bool optAlgId(Instruction &I) {
-    bool Modified = false;
-    if (I.getOpcode() != Instruction::Add) return Modified;
-    
-    BinaryOperator *AddInst = dyn_cast<BinaryOperator>(&I);
+    auto OpCode = I.getOpcode();
 
-    Value *Op1 = AddInst->getOperand(0);
-    Value *Op2 = AddInst->getOperand(1);
+    if (OpCode != Instruction::Add and OpCode != Instruction::Mul) return false;
+
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
-    if ((CI = dyn_cast<ConstantInt>(Op1)) && CI->isZero()) {
-        errs() << "Triggered algebraic ID\n";
-        AddInst->replaceAllUsesWith(Op2);
-        AddInst->eraseFromParent();
-        Modified = true;
-        return Modified;
-    }
-    else if ((CI = dyn_cast<ConstantInt>(Op2)) && CI->isZero()) {
-        errs() << "Triggered algebraic ID\n";
-        AddInst->replaceAllUsesWith(Op1);
-        AddInst->eraseFromParent();
-        Modified = true;
-        return Modified;
+    // Is the operator a neutral constant of the operation?
+    // CI is set to the constant neutral operand after this function call
+    // Warning: this lambda has a side effect
+    std::function<bool(Value*)> isNeutralConstant;
+
+    if (OpCode == Instruction::Mul) {
+        isNeutralConstant = [&CI] (Value *op) {
+            return (CI = dyn_cast<ConstantInt>(op))
+                and CI->isOne();
+        };
     }
     
-    return Modified;
+    if (OpCode == Instruction::Add) {
+        isNeutralConstant = [&CI] (Value *op) {
+            return (CI = dyn_cast<ConstantInt>(op))
+                and CI->isZero();
+        };
+    }
+
+    if (isNeutralConstant(Op1)) std::swap(Op1, Op2);
+    if (not isNeutralConstant(Op2)) return false;
+
+    // If we reach this point, Op2 is always a constant integer, neutral for the operation
+    // The following code in hence invariant wrt operands order
+
+    errs() << "Triggered algebraic ID\n";
+
+    I.replaceAllUsesWith(Op1);
+
+    return true;
 }
 
 bool optAdvSR(Instruction &I) {
-    bool Modified = false;
-    if (I.getOpcode() != Instruction::Mul and I.getOpcode() != Instruction::UDiv) return Modified;
+    auto OpCode = I.getOpcode();
 
-    if (I.getOpcode() == Instruction::Mul) {
-        BinaryOperator *MultInst = dyn_cast<BinaryOperator>(&I);
+    if (OpCode != Instruction::Mul) return false;
 
-        Value *Op1 = MultInst->getOperand(0);
-        Value *Op2 = MultInst->getOperand(1);
-        ConstantInt *CI = nullptr;
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
+    ConstantInt *CI;
 
-        // check for mul by 15 (2^4 - 1) -> x*15 or 15*x
-        if (((CI == dyn_cast<ConstantInt>(Op1)) && CI->getValue() == 15) ||
-            ((CI == dyn_cast<ConstantInt>(Op2)) && CI->getValue() == 15)) {
-                errs() << "Triggered mul advanced strength reduction\n";
-                // change x*15 to (x<<4) - x
-                Value *Shifted = BinaryOperator::CreateShl(Op1, ConstantInt::get(CI->getType(), 4));
-                Instruction *Sub = BinaryOperator::CreateSub(Shifted, Op1);
-                MultInst->replaceAllUsesWith(Sub);
-                MultInst->eraseFromParent();
-                Modified = True;
-                return Modified;
-        }
-    }
-    if (I.getOpcode() == Instruction::UDiv) {
-        BinaryOperator *DivInst = dyn_cast<BinaryOperator>(&I);
+    // Check if op is a constant integer and can be turned into
+    // a power of 2 with 1 sum
+    // Warning: this lambda has a side effect
+    auto isPow2MinusOne = [&CI](Value *op) {
+        return (CI = dyn_cast<ConstantInt>(op))
+            and APInt(CI->getValue() + 1).isPowerOf2();
+    };
 
-        Value *Op1 = DivInst->getOperand(0);
-        ConstantInt *CI = nullptr;
+    // Check if op is a constant integer and can be turned into
+    // a power of 2 with 1 subtraction
+    auto isPow2PlusOne = [&CI](Value *op) {
+        return (CI = dyn_cast<ConstantInt>(op))
+            and APInt(CI->getValue() - 1).isPowerOf2();
+    };
 
-        // check for division by 8 (2^3)
-        if ((CI = dyn_cast<ConstantInt>(DivInst->getOperand(1))) && CI->getValue() == 8) {
-            errs() << "Triggered div advanced strength reduction\n";
-            // implement x/8 as x>>3
-            Instruction *ShrInst = BinaryOperator::CreateLShr(Op1, ConstantInt::get(CI->getType(), 3));
-            DivInst->replaceAllUsesWith(ShrInst);
-            DivInst->eraseFromParent();
-            Modified = true;
-            return Modified;
-        }
-    }
+    auto isAlmostPow2 = [&isPow2PlusOne, &isPow2MinusOne](Value *op) {
+        return isPow2PlusOne(op) or isPow2MinusOne(op);
+    };
 
-    return Modified;
+    if (isAlmostPow2(Op1)) std::swap(Op1, Op2);
+    if (not isAlmostPow2(Op2)) return false;
+
+    // If we reach this point, Op2 is always a constant integer, distant 1 Operation from
+    // a power of 2. The following code in hence invariant wrt operands order
+
+    errs() << "Triggered advanced strength reduction\n";
+
+    // Adjustment Instruction Type
+    Instruction::BinaryOps AdjInstType =
+        isPow2PlusOne(Op2) ? Instruction::Add : Instruction::Sub;
+
+    APInt Pow2Val =
+        isPow2PlusOne(Op2) ? (CI->getValue() - 1) : (CI->getValue() + 1);
+    
+    unsigned ShiftVal =  Pow2Val.logBase2();
+
+    Instruction *ShftInst = BinaryOperator::Create(
+        Instruction::Shl,
+        Op1, ConstantInt::get(CI->getType(), ShiftVal)
+    );
+    Instruction *AdjInst = BinaryOperator::Create(
+        AdjInstType,
+        ShftInst, Op1
+    );
+
+    ShftInst->insertAfter(&I);
+    AdjInst->insertAfter(ShftInst);
+    
+    I.replaceAllUsesWith(AdjInst);
+
+    return true;
 }
 
 bool optMultiInstr(Instruction &I) {
-    bool Modified = false;
-    if (auto *AddInst = dyn_cast<BinaryOperator>(&I)) {
-        // check for addition with 1
-        if (AddInst->getOpcode() == Instruction::Add) {
-            Value *Op1 = AddInst->getOperand(0);
-            ConstantInt *CI = dyn_cast<ConstantInt>(AddInst->getOperand(1));
-            if (CI && CI->isOne()) {
-                // look for the next instruction to be a substraction
-                Instruction *NextI = I.getNextNode();
-                if (NextI){
-                    if (auto *SubInst = dyn_cast<BinaryOperator>(NextI)) {
-                        if (SubInst->getOpcode() == Instruction::Sub) {
-                            Value *SubOp1 = SubInst->getOperand(0);
-                            ConstantInt *SubCI = dyn_cast<ConstantInt>(SubInst->getOperand(1));
-                            // check if the sub is undoing the addition (the pattern)
-                            if (SubOp1 == AddInst && SubCI && SubCI->isOne()) {
-                                errs() << "Triggered advanced multi-instr optimization\n";
+    auto OpCode = I.getOpcode();
 
-                                // replace uses of the sub with the original operand of the add
-                                SubInst->replaceAllUsesWith(Op1);
-                                // erase sub instruction
-                                SubInst->eraseFromParent();
-                                AddInst->removeFromParent();
-                                AddInst->dropAllReferences();
-                                AddInst->deleteValue();
-                                Modified = true;
-                                return Modified;
-                            }
-                        }
-                    }
-                }
-            }
+    if (OpCode != Instruction::Add and OpCode != Instruction::Sub) return false;
+
+    using OptimizableInstr = std::optional<std::pair<Value*, ConstantInt*>>;
+    auto tryGetOperands = [](const Instruction &I) -> OptimizableInstr {
+        Value *Op1 = I.getOperand(0);
+        Value *Op2 = I.getOperand(1);
+        ConstantInt *CI = nullptr;
+
+        if ((CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
+        if (not (CI = dyn_cast<ConstantInt>(Op2))) return std::nullopt;
+
+        // Invariant code wrt operands order
+        return OptimizableInstr{{Op1, CI}};
+    };
+
+    // If this instruction has not the desired structure, exit
+    OptimizableInstr ThisInstrOperands = tryGetOperands(I);
+    if (not ThisInstrOperands) return false;
+    
+    // Or if the non constant operand is not the result of a
+    // previous instruction (eg. a constant), exit
+    Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
+    if (not PrevInstr) return false;
+
+    // If thre previous instruction has not the desired structure, exit
+    OptimizableInstr PrevInstrOperands = tryGetOperands(*PrevInstr);
+    if (not PrevInstrOperands) return false;
+
+    // Map of inverse operations
+    const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
+        {Instruction::Add, Instruction::Sub},
+        {Instruction::Sub, Instruction::Add}
+    };
+
+    bool areInverseOperations = 
+        InverseOperators.at(static_cast<Instruction::BinaryOps>(OpCode)) == PrevInstr->getOpcode();
+    if (not areInverseOperations) return false;
+
+    bool haveSameConstant =
+        ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
+    if (not haveSameConstant) return false;
+
+    I.replaceAllUsesWith(PrevInstrOperands->first);
+    return true;
+}
+
+void eraseInstructions(BasicBlock &B) {
+    std::vector<Instruction*> toErase;
+
+    for (auto &I : B) {
+        if (optBasicSR(I) || optAlgId(I) || optAdvSR(I) || optMultiInstr(I)) {
+            toErase.push_back(&I);
         }
     }
-    return Modified;
+
+    for (auto *I : toErase) {
+        I->eraseFromParent();
+    }
 }
 
 bool runOnBasicBlock(BasicBlock &B) {
-    bool Modified = false;
+    bool modified = false;
     for (auto &I : B) {
-        modified =
-            optBasicSR(I)
-            | optAlgId(I)
-            | optAdvSR(I)
-            | optMultiInstr(I)
-            | modified;
+        modified = modified | optBasicSR(I) | optAlgId(I) | optAdvSR(I) | optMultiInstr(I);
     }
 
-    errs() << (modified ? "IR has been modified" : "Nothing has been modified") << "\n";
+    if (modified) {
+        eraseInstructions(B);
+        errs() << "IR has been modified\n";
+    } else {
+        errs() << "Nothing has been modified\n";
+    }
 
-    return Modified;
+    return modified;
 }
-
-
-
 
 bool runOnFunction(Function &F) {
-  bool Transformed = false;
+    errs() << "\nRunning on function: " << F.getName() << "\n";
+    bool Transformed = false;
 
-  for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
-    if (runOnBasicBlock(*Iter)) {
-      Transformed = true;
+    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
+        if (runOnBasicBlock(*Iter)) {
+            Transformed = true;
+        }
     }
-  }
 
-  return Transformed;
+    return Transformed;
 }
 
+
 PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-  bool Modified = false;
+    bool modified = false;
 
-  for (auto F = M.begin(); F != M.end(); ++F) {
-    Modified = Modified | runOnFunction(*F);
-  }
+    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
+        modified = modified | runOnFunction(*Fiter);
+    }
 
-  return Modified ? PreservedAnalyses::all() : PreservedAnalyses::none();
+    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

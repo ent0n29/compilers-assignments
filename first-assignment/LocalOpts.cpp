@@ -14,6 +14,23 @@
 
 using namespace llvm;
 
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul or udiv
+ * asm instruction to apply strength reduction.
+ * 
+ * DETAILS
+ * Multiplications and divisions by a power of 2 are
+ * turned into shift left of right. Takes into account
+ * that mul is commutative, while div is not.
+ * 
+ * EXAMPLES
+ * mul %0, 8 -> shl %0, 3
+ * mul 8, %0 -> shl %0, 3
+ * mul 8, 16 -> shl 16, 3
+ * udiv %0, 8 -> lshr %0, 3
+ * udiv 16, 8 -> lshr 16, 3
+*/
 bool optBasicSR(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -61,6 +78,23 @@ bool optBasicSR(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul or udiv
+ * asm instruction to apply algebraic semplification.
+ * 
+ * DETAILS
+ * Removes muls that have "1" as a operand, by replacing
+ * them with the other operand.
+ * Removes adds that have "0" as a operand, by replacing
+ * thetm with the other operand.
+ * 
+ * EXAMPLES
+ * mul %0, 1 => %0
+ * mul 1, %0 => %0
+ * add %0, 0 => %0
+ * add 0, %0 => %0
+*/
 bool optAlgId(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -102,6 +136,21 @@ bool optAlgId(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul asm
+ * instruction to apply advanced strength reduction.
+ * 
+ * DETAILS
+ * Multiplications that have a operand which is almost
+ * (1 step - add or sub - far) a power of 2, are turned
+ * into a shift left plus a sub or an add.
+ * 
+ * EXAMPLES
+ * mul %0, 9 -> %1 = shl %0, 3; add %1, %0
+ * mul 15, %0 -> %1 = shl %0, 4; sub %1, %0
+ * mul 31, 8 -> %1 = shl 8, 5; sub %1, 8
+*/
 bool optAdvSR(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -164,6 +213,23 @@ bool optAdvSR(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * Multi-instruction optimization pass that acts on patterns
+ * in which an instruction nullifies the previous one. 
+ * 
+ * DETAILS
+ * Able to manage also instructions arranged in a "sandwitch"
+ * fashion - i.e. if the nullification is not immediately
+ * after the nullified operation.
+ * 
+ * EXAMPLES
+ * %2 = sub i32 %0, 10; [STUFF;] %4 = add i32 %2, 10
+ * => %2 = sub i32 %0, 10; [STUFF;] %4 = %0
+ * 
+ * %2 = add i32 %0, 20; [STUFF;] %4 = sub i32 %2, 20
+ * => %2 = add i32 %0, 20; [STUFF;] %4 = %0
+*/
 bool optMultiInstr(Instruction &I) {
     auto OpCode = I.getOpcode();
 

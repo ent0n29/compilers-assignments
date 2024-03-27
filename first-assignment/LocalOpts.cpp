@@ -10,6 +10,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
 #include <map>
+#include <optional>
 
 using namespace llvm;
 
@@ -166,59 +167,50 @@ bool optAdvSR(Instruction &I) {
 bool optMultiInstr(Instruction &I) {
     auto OpCode = I.getOpcode();
 
-    if (
-        OpCode != Instruction::Add
-        and OpCode != Instruction::Mul
-        and OpCode != Instruction::Sub
-        and OpCode != Instruction::UDiv
-    ) return false;
-    
-    Value *Op1 = I.getOperand(0);
-    Value *Op2 = I.getOperand(1);
-    ConstantInt *CI = nullptr;
-    
-    // No users of this instruction
-    if (I.use_begin() == I.use_end()) return false;
+    if (OpCode != Instruction::Add and OpCode != Instruction::Sub) return false;
 
-    Instruction *NextInstr = dyn_cast<Instruction>(I.use_begin()->getUser());
+    using OptimizableInstr = std::optional<std::pair<Value*, ConstantInt*>>;
+    auto tryGetOperands = [](const Instruction &I) -> OptimizableInstr {
+        Value *Op1 = I.getOperand(0);
+        Value *Op2 = I.getOperand(1);
+        ConstantInt *CI = nullptr;
 
-    errs() << NextInstr->getOpcodeName() << "\n";
+        if ((CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
+        if (not (CI = dyn_cast<ConstantInt>(Op2))) return std::nullopt;
 
-    Value *NextUserOp1 = NextInstr->getOperand(0);
-    Value *NextUserOp2 = NextInstr->getOperand(1);
-    ConstantInt *NextUserCI = nullptr;
-
-    auto isConstant = [](Value *op, ConstantInt* &CI) {
-        return (CI = dyn_cast<ConstantInt>(op));
+        // Invariant code wrt operands order
+        return OptimizableInstr{{Op1, CI}};
     };
 
-    if (isConstant(Op1, CI)) std::swap(Op1, Op2);
-    if (not isConstant(Op2, CI)) return false;
+    // If this instruction has not the desired structure, exit
+    OptimizableInstr ThisInstrOperands = tryGetOperands(I);
+    if (not ThisInstrOperands) return false;
+    
+    // Or if the non constant operand is not the result of a
+    // previous instruction (eg. a constant), exit
+    Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
+    if (not PrevInstr) return false;
 
-    if (isConstant(NextUserOp1, NextUserCI)) std::swap(NextUserOp1, NextUserOp2);
-    if (not isConstant(NextUserOp2, NextUserCI)) return false;
-
-    // Invariant code wrt operands order
-
-    if (CI->getValue() != NextUserCI->getValue()) return false;
-
-    errs() << "Triggered multi-instruction optimization\n";
+    // If thre previous instruction has not the desired structure, exit
+    OptimizableInstr PrevInstrOperands = tryGetOperands(*PrevInstr);
+    if (not PrevInstrOperands) return false;
 
     // Map of inverse operations
-    const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOps = {
+    const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
         {Instruction::Add, Instruction::Sub},
-        {Instruction::Sub, Instruction::Add},
-        {Instruction::Mul, Instruction::UDiv},
-        {Instruction::UDiv, Instruction::Mul}
+        {Instruction::Sub, Instruction::Add}
     };
-    
-    // If current current instr and next user operations are the opposite
-    if (InverseOps.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == NextInstr->getOpcode()) {
-        NextInstr->replaceAllUsesWith(Op1);
-        return true;
-    }
 
-    return false;
+    bool areInverseOperations = 
+        InverseOperators.at(static_cast<Instruction::BinaryOps>(OpCode)) == PrevInstr->getOpcode();
+    if (not areInverseOperations) return false;
+
+    bool haveSameConstant =
+        ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
+    if (not haveSameConstant) return false;
+
+    I.replaceAllUsesWith(PrevInstrOperands->first);
+    return true;
 }
 
 bool runOnBasicBlock(BasicBlock &B) {

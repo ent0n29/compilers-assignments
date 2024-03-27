@@ -11,12 +11,89 @@
 #include "llvm/IR/InstrTypes.h"
 #include <map>
 #include <optional>
+#include <set>
 
 using namespace llvm;
 
+bool runOnFunction(Function&);
+bool runOnBasicBlock(BasicBlock&);
+
+bool optBasicSR(Instruction&);
+bool optAlgId(Instruction&);
+bool optAdvSR(Instruction&);
+bool optMultiInstr(Instruction&);
+
+
+PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
+    bool modified = false;
+
+    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
+        modified = modified | runOnFunction(*Fiter);
+    }
+
+    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
+}
+
+bool runOnFunction(Function &F) {
+    errs() << "\nRunning on function: " << F.getName() << "\n";
+    bool Transformed = false;
+
+    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
+        if (runOnBasicBlock(*Iter)) {
+            Transformed = true;
+        }
+    }
+
+    return Transformed;
+}
+
+bool runOnBasicBlock(BasicBlock &B) {
+    bool globallyModified = false;
+    std::set<Instruction*> toBeErased;
+
+    for (auto &I : B) {
+        // Be aware that the short-circuiting property of logical OR implies
+        // that for each instruction, just the first matching optimization is executed
+        // Comment one of the following lines to disable the respective optimization
+        bool locallyModified =
+            optBasicSR(I)
+            || optAlgId(I)
+            || optAdvSR(I)
+            || optMultiInstr(I);
+
+        if (locallyModified) toBeErased.emplace(&I);
+        
+        globallyModified = globallyModified or locallyModified;
+    }
+
+    if (globallyModified) {
+        for (auto &I : toBeErased) I->eraseFromParent();
+    }
+
+    errs() << (globallyModified ? "IR has been modified" : "Nothing has been modified") << "\n";
+
+    return globallyModified;
+}
+
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul or udiv
+ * asm instruction to apply strength reduction.
+ * 
+ * DETAILS
+ * Multiplications and divisions by a power of 2 are
+ * turned into shift left of right. Takes into account
+ * that mul is commutative, while div is not.
+ * 
+ * EXAMPLES
+ * mul %0, 8 -> shl %0, 3
+ * mul 8, %0 -> shl %0, 3
+ * mul 8, 16 -> shl 16, 3
+ * udiv %0, 8 -> lshr %0, 3
+ * udiv 16, 8 -> lshr 16, 3
+*/
 bool optBasicSR(Instruction &I) {
     auto OpCode = I.getOpcode();
-
 
     if (OpCode != Instruction::Mul and OpCode != Instruction::UDiv) return false;
 
@@ -28,7 +105,7 @@ bool optBasicSR(Instruction &I) {
     auto isConstPowOf2 = [&CI](auto &op) {
         return (CI = dyn_cast<ConstantInt>(op))
             and CI->getValue().isPowerOf2()
-            and CI->getValue() != 1;
+            and not CI->isOne();
     };
 
     if (OpCode == Instruction::Mul) {
@@ -61,6 +138,23 @@ bool optBasicSR(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul or udiv
+ * asm instruction to apply algebraic semplification.
+ * 
+ * DETAILS
+ * Removes muls that have "1" as a operand, by replacing
+ * them with the other operand.
+ * Removes adds that have "0" as a operand, by replacing
+ * thetm with the other operand.
+ * 
+ * EXAMPLES
+ * mul %0, 1 => %0
+ * mul 1, %0 => %0
+ * add %0, 0 => %0
+ * add 0, %0 => %0
+*/
 bool optAlgId(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -102,6 +196,21 @@ bool optAlgId(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * An optimization pass that acts on a single mul asm
+ * instruction to apply advanced strength reduction.
+ * 
+ * DETAILS
+ * Multiplications that have a operand which is almost
+ * (1 step - add or sub - far) a power of 2, are turned
+ * into a shift left plus a sub or an add.
+ * 
+ * EXAMPLES
+ * mul %0, 9 -> %1 = shl %0, 3; add %1, %0
+ * mul 15, %0 -> %1 = shl %0, 4; sub %1, %0
+ * mul 31, 8 -> %1 = shl 8, 5; sub %1, 8
+*/
 bool optAdvSR(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -121,6 +230,7 @@ bool optAdvSR(Instruction &I) {
 
     // Check if op is a constant integer and can be turned into
     // a power of 2 with 1 subtraction
+    // Warning: this lambda has a side effect
     auto isPow2PlusOne = [&CI](Value *op) {
         return (CI = dyn_cast<ConstantInt>(op))
             and APInt(CI->getValue() - 1).isPowerOf2();
@@ -136,8 +246,10 @@ bool optAdvSR(Instruction &I) {
     // If we reach this point, Op2 is always a constant integer, distant 1 Operation from
     // a power of 2. The following code in hence invariant wrt operands order
 
+    if (CI->getValue().isOne()) return false;
+    
     errs() << "Triggered advanced strength reduction\n";
-
+    
     // Adjustment Instruction Type
     Instruction::BinaryOps AdjInstType =
         isPow2PlusOne(Op2) ? Instruction::Add : Instruction::Sub;
@@ -164,6 +276,23 @@ bool optAdvSR(Instruction &I) {
     return true;
 }
 
+/**
+ * SYNOPSIS
+ * Multi-instruction optimization pass that acts on patterns
+ * in which an instruction nullifies the previous one. 
+ * 
+ * DETAILS
+ * Able to manage also instructions arranged in a "sandwitch"
+ * fashion - i.e. if the nullification is not immediately
+ * after the nullified operation.
+ * 
+ * EXAMPLES
+ * %2 = sub i32 %0, 10; [STUFF;] %4 = add i32 %2, 10
+ * => %2 = sub i32 %0, 10; [STUFF;] %4 = %0
+ * 
+ * %2 = add i32 %0, 20; [STUFF;] %4 = sub i32 %2, 20
+ * => %2 = add i32 %0, 20; [STUFF;] %4 = %0
+*/
 bool optMultiInstr(Instruction &I) {
     auto OpCode = I.getOpcode();
 
@@ -209,61 +338,9 @@ bool optMultiInstr(Instruction &I) {
         ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
     if (not haveSameConstant) return false;
 
+    errs() << "Triggered multi-instruction optimization\n";
+
     I.replaceAllUsesWith(PrevInstrOperands->first);
+    
     return true;
-}
-
-// erase intructions and keep only optimized ones
-void eraseInstructions(BasicBlock &B) {
-    std::vector<Instruction*> toErase;
-
-    for (auto &I : B) {
-        if (optBasicSR(I) || optAlgId(I) || optAdvSR(I) || optMultiInstr(I)) {
-            toErase.push_back(&I);
-        }
-    }
-
-    for (auto *I : toErase) {
-        I->eraseFromParent();
-    }
-}
-
-bool runOnBasicBlock(BasicBlock &B) {
-    bool modified = false;
-    for (auto &I : B) {
-        modified = modified | optBasicSR(I) | optAlgId(I) | optAdvSR(I) | optMultiInstr(I);
-    }
-
-    if (modified) {
-        eraseInstructions(B);
-        errs() << "IR has been modified\n";
-    } else {
-        errs() << "Nothing has been modified\n";
-    }
-
-    return modified;
-}
-
-bool runOnFunction(Function &F) {
-    errs() << "\nRunning on function: " << F.getName() << "\n";
-    bool Transformed = false;
-
-    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
-        if (runOnBasicBlock(*Iter)) {
-            Transformed = true;
-        }
-    }
-
-    return Transformed;
-}
-
-
-PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-    bool modified = false;
-
-    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
-        modified = modified | runOnFunction(*Fiter);
-    }
-
-    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

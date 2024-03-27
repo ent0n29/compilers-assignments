@@ -213,6 +213,7 @@ bool optMultiInstr(Instruction &I) {
     return true;
 }
 
+// erase intructions and keep only optimized ones
 void eraseInstructions(BasicBlock &B) {
     std::vector<Instruction*> toErase;
 

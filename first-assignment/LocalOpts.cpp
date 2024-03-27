@@ -15,6 +15,66 @@
 
 using namespace llvm;
 
+bool runOnFunction(Function&);
+bool runOnBasicBlock(BasicBlock&);
+
+bool optBasicSR(Instruction&);
+bool optAlgId(Instruction&);
+bool optAdvSR(Instruction&);
+bool optMultiInstr(Instruction&);
+
+
+PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
+    bool modified = false;
+
+    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
+        modified = modified | runOnFunction(*Fiter);
+    }
+
+    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
+}
+
+bool runOnFunction(Function &F) {
+    errs() << "\nRunning on function: " << F.getName() << "\n";
+    bool Transformed = false;
+
+    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
+        if (runOnBasicBlock(*Iter)) {
+            Transformed = true;
+        }
+    }
+
+    return Transformed;
+}
+
+bool runOnBasicBlock(BasicBlock &B) {
+    bool globallyModified = false;
+    std::set<Instruction*> toBeErased;
+
+    for (auto &I : B) {
+        // Be aware that the short-circuiting property of logical OR implies
+        // that for each instruction, just the first matching optimization is executed
+        // Comment one of the following lines to disable the respective optimization
+        bool locallyModified =
+            optBasicSR(I)
+            || optAlgId(I)
+            || optAdvSR(I)
+            || optMultiInstr(I);
+
+        if (locallyModified) toBeErased.emplace(&I);
+        
+        globallyModified = globallyModified or locallyModified;
+    }
+
+    if (globallyModified) {
+        for (auto &I : toBeErased) I->removeFromParent();
+    }
+
+    errs() << (globallyModified ? "IR has been modified" : "Nothing has been modified") << "\n";
+
+    return globallyModified;
+}
+
 /**
  * SYNOPSIS
  * An optimization pass that acts on a single mul or udiv
@@ -283,55 +343,4 @@ bool optMultiInstr(Instruction &I) {
     I.replaceAllUsesWith(PrevInstrOperands->first);
     
     return true;
-}
-
-bool runOnBasicBlock(BasicBlock &B) {
-    bool globallyModified = false;
-    std::set<Instruction*> toBeErased;
-
-    for (auto &I : B) {
-        // Be aware that the short-circuiting property of logical OR implies
-        // that for each instruction, just the first matching optimization is executed
-        // Comment one of the following lines to disable the respective optimization
-        bool locallyModified =
-            optBasicSR(I)
-            || optAlgId(I)
-            || optAdvSR(I)
-            || optMultiInstr(I);
-
-        if (locallyModified) toBeErased.emplace(&I);
-        
-        globallyModified = globallyModified || locallyModified;
-    }
-
-    if (globallyModified) {
-        for (auto &I : toBeErased) I->removeFromParent();
-    }
-
-    errs() << (globallyModified ? "IR has been modified" : "Nothing has been modified") << "\n";
-
-    return globallyModified;
-}
-
-bool runOnFunction(Function &F) {
-    errs() << "\nRunning on function: " << F.getName() << "\n";
-    bool Transformed = false;
-
-    for (auto Iter = F.begin(); Iter != F.end(); ++Iter) {
-        if (runOnBasicBlock(*Iter)) {
-            Transformed = true;
-        }
-    }
-
-    return Transformed;
-}
-
-PreservedAnalyses LocalOpts::run(Module &M, ModuleAnalysisManager &AM) {
-    bool modified = false;
-
-    for (auto Fiter = M.begin(); Fiter != M.end(); ++Fiter) {
-        modified = modified | runOnFunction(*Fiter);
-    }
-
-    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

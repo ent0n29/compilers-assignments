@@ -67,7 +67,7 @@ bool runOnBasicBlock(BasicBlock &B) {
     }
 
     if (globallyModified) {
-        for (auto &I : toBeErased) I->removeFromParent();
+        for (auto &I : toBeErased) I->eraseFromParent();
     }
 
     errs() << (globallyModified ? "IR has been modified" : "Nothing has been modified") << "\n";

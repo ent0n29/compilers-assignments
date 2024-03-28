@@ -29,6 +29,6 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
 In our sources, **4 spaces indentation** has been adopted "de facto"; however, the rest of LLVM project, uses **2 spaces indentation**.
 
 ## Contributors
- - Fanó Christofer [@ch-fano]
- - Mecatti Francesco [@mc-cat-tty]
- - Stano Antonio [@ent0n29]
+ - Christofer Fanò [@ch-fano]
+ - Francesco Mecatti [@mc-cat-tty]
+ - Antonio Stano [@ent0n29]

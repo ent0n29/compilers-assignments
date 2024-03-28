@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # path to your directory containing the .ll files
-dir="$PATH_TO_YOUR_DIRECTORY/compilers-assignments/first-assignment/tests/"
+dir="$PATH_TO_YOUR_DIRECTORY"
 for file in $dir/*.ll; do
     base=$(basename $file .ll)
 

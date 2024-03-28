@@ -24,7 +24,7 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
 ### Directories
 The _testing_ directory tree looks like this:
 
-<img src="assets/testing_tree2.png" width="50">
+<img src="assets/testing_tree2.png" width="100">
 
 
 Where:

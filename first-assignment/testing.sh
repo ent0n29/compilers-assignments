@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # path to your directory containing the .ll files
-dir="$PATH_TO_YOUR_DIRECTORY/compilers-assignments/first-assignment/testing"
+dir="$PATH_TO_YOUR_DIRECTORY/testing"
 for file in $dir/tests/*.ll; do
+
     base=$(basename $file .ll)
     echo -e "\n\nStarting the optimization of $base.ll"
 

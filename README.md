@@ -19,6 +19,20 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
  3. Multi-Instruction Optimization	
     - $a = b + 1, c = a − 1 ⇒ a = b + 1, c = b$
 
+## Testing Logic
+
+## Directories
+The _testing_ directory tree looks like this:
+_add image_
+
+Where:
+- tests -> contains some samples of IR code to check if our opt passes work
+- expected -> contains the _expected outcome_, our desired results that our opt passes should reach
+- optimized -> contains the IR code generated with our opt passes
+## Automated testing
+the bash script _testing.sh_ automatically generates all the _optimized.ll_ and put them in _optimized_ files for every test in _tests_.
+It also checks if every _expected.ll_ and _optimized.ll_ are equal, and if it's true, the test is passed.
+
 ## Coding Style
 ### Naming Conventions
  - Type definitions (classes, structs, and so on) -> `PascalCase`

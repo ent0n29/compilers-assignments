@@ -24,7 +24,7 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
 ## Directories
 The _testing_ directory tree looks like this:
 
-![](assets/testing_tree.png)
+![](assets/testing_tree2.png)
 
 Where:
 - tests -> contains some samples of IR code to check if our opt passes work

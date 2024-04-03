@@ -225,7 +225,8 @@ bool optAdvSR(Instruction &I) {
     // Warning: this lambda has a side effect
     auto isPow2MinusOne = [&CI](Value *op) {
         return (CI = dyn_cast<ConstantInt>(op))
-            and APInt(CI->getValue() + 1).isPowerOf2();
+            and APInt(CI->getValue() + 1).isPowerOf2()
+            and not CI->isZero();
     };
 
     // Check if op is a constant integer and can be turned into

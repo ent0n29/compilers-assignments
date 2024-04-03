@@ -1,5 +1,5 @@
-; ModuleID = '/home/christofer/workspace/GitLLVM/compilers-assignments/first-assignment/testing/tests/basic_pow2_sr.optimized.bc'
-source_filename = "/home/christofer/workspace/GitLLVM/compilers-assignments/first-assignment/testing/tests/basic_pow2_sr.ll"
+; ModuleID = '/home/enton/programming/compilers-assignments/first-assignment/testing/tests/basic_pow2_sr.optimized.bc'
+source_filename = "/home/enton/programming/compilers-assignments/first-assignment/testing/tests/basic_pow2_sr.ll"
 
 define i32 @test_mul_1(i32 noundef %0) {
   %2 = shl i32 %0, 3

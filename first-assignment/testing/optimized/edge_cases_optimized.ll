@@ -1,5 +1,5 @@
-; ModuleID = '/home/christofer/workspace/GitLLVM/compilers-assignments/first-assignment/testing/tests/edge_cases.optimized.bc'
-source_filename = "/home/christofer/workspace/GitLLVM/compilers-assignments/first-assignment/testing/tests/edge_cases.ll"
+; ModuleID = '/home/enton/programming/compilers-assignments/first-assignment/testing/tests/edge_cases.optimized.bc'
+source_filename = "/home/enton/programming/compilers-assignments/first-assignment/testing/tests/edge_cases.ll"
 
 define i32 @test_algebraic_id(i32 noundef %0) {
   %2 = mul i32 0, %0

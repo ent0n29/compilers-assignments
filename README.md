@@ -24,8 +24,27 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
 ### Directories
 The _testing_ directory tree looks like this:
 
-<img src="assets/testing_tree2.png" width="275">
-
+```bash
+testing
+├── expected
+│   ├── advanced_pow2_sr_expected.ll
+│   ├── algebraic_id_expected.ll
+│   ├── basic_pow2_sr_expected.ll
+│   ├── edge_cases_expected.ll
+│   └── multi_instr_expected.ll
+├── optimized
+│   ├── advanced_pow2_sr_optimized.ll
+│   ├── algebraic_id_optimized.ll
+│   ├── basic_pow2_sr_optimized.ll
+│   ├── edge_cases_optimized.ll
+│   └── multi_instr_optimized.ll
+└── tests
+    ├── advanced_pow2_sr.ll
+    ├── algebraic_id.ll
+    ├── basic_pow2_sr.ll
+    ├── edge_cases.ll
+    └── multi_instr.ll
+```
 
 Where:
 - tests -> contains some samples of IR code to check if our opt passes work

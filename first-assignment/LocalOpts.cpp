@@ -53,7 +53,7 @@ bool runOnBasicBlock(BasicBlock &B) {
 
     for (auto &I : B) {
         // Be aware that the short-circuiting property of logical OR implies
-        // that for each instruction, just the first matching optimization is executed
+        // that for each instruction, just the first matching optimization is executed.
         // Comment one of the following lines to disable the respective optimization
         bool locallyModified =
             optBasicSR(I)
@@ -305,7 +305,8 @@ bool optMultiInstr(Instruction &I) {
         Value *Op2 = I.getOperand(1);
         ConstantInt *CI = nullptr;
 
-        if ((CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
+        const bool isCommutative = I.getOpcode() == Instruction::Add;
+        if (isCommutative and (CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
         if (not (CI = dyn_cast<ConstantInt>(Op2))) return std::nullopt;
 
         // Invariant code wrt operands order
@@ -321,7 +322,7 @@ bool optMultiInstr(Instruction &I) {
     Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
     if (not PrevInstr) return false;
 
-    // If thre previous instruction has not the desired structure, exit
+    // If the previous instruction has not the desired structure, exit
     OptimizableInstr PrevInstrOperands = tryGetOperands(*PrevInstr);
     if (not PrevInstrOperands) return false;
 

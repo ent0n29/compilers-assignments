@@ -1,3 +1,4 @@
+; Add then sub
 define i32 @test1(i32 noundef %0) {
   %2 = add i32 %0, 10
   %3 = mul i32 %2, 6
@@ -5,6 +6,7 @@ define i32 @test1(i32 noundef %0) {
   ret i32 %4
 }
 
+; Sub then add
 define i32 @test2(i32 noundef %0) {
   %2 = sub i32 %0, 10
   %3 = mul i32 %2, 6
@@ -12,12 +14,14 @@ define i32 @test2(i32 noundef %0) {
   ret i32 %4
 }
 
+; No sandwich
 define i32 @test3(i32 noundef %0) {
   %2 = sub i32 %0, 10
   %3 = add i32 %2, 10
   ret i32 %3
 }
 
+; Bigger sandwich
 define i32 @test4(i32 noundef %0) {
   %2 = sub i32 %0, 10
   %3 = mul i32 %2, 6
@@ -27,6 +31,7 @@ define i32 @test4(i32 noundef %0) {
   ret i32 %6
 }
 
+; Placebo test: different constants
 define i32 @test5(i32 noundef %0) {
   %2 = add i32 %0, 10
   %3 = add i32 %2, 6
@@ -34,9 +39,17 @@ define i32 @test5(i32 noundef %0) {
   ret i32 %4
 }
 
+; Placebo test: sub isn't commutative
 define i32 @test6(i32 noundef %0) {
-  %2 = add i32 %0, 10
+  %2 = add i32 10, %0
   %3 = sub i32 10, %2
+  ret i32 %3
+}
+
+; Placebo test: sub isn't commutative
+define i32 @test7(i32 noundef %0) {
+  %2 = sub i32 10, %0
+  %3 = add i32 10, %2
   ret i32 %3
 }
 

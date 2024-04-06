@@ -31,9 +31,15 @@ define i32 @test5(i32 noundef %0) {
 }
 
 define i32 @test6(i32 noundef %0) {
-  %2 = add i32 %0, 10
-  %3 = add i32 %2, 6
-  ret i32 %0
+  %2 = add i32 10, %0
+  %3 = sub i32 10, %2
+  ret i32 %3
+}
+
+define i32 @test7(i32 noundef %0) {
+  %2 = sub i32 10, %0
+  %3 = add i32 10, %2
+  ret i32 %3
 }
 
 define i32 @main() {

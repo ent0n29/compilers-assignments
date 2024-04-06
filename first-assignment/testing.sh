@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # path to your directory containing the .ll files
-dir="./testing"
+my_path=$(realpath $0)
+my_dir=$(dirname $my_path)
+dir="$my_dir/testing"
 declare -i exit_code=0
 
 for file in $dir/tests/*.ll; do

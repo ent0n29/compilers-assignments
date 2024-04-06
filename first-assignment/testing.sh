@@ -1,20 +1,26 @@
 #!/bin/bash
 
 # path to your directory containing the .ll files
-dir="$PATH/compilers-assignments/first-assignment/testing"
+my_path=$(realpath $0)
+my_dir=$(dirname $my_path)
+dir="$my_dir/testing"
+declare -i exit_code=0
+
 for file in $dir/tests/*.ll; do
 
     base=$(basename $file .ll)
     echo -e "\n\nStarting the optimization of $base.ll"
 
     # run passes
-    opt -p localopts $file -o $dir/tests/$base.optimized.bc
-    llvm-dis $dir/tests/$base.optimized.bc -o $dir/optimized/$base\_optimized.ll
+    opt -p localopts $file -S -o $dir/optimized/$base\_optimized.ll
 
     echo -e "\nOptimization ended, checking the results"
     diff <(tail +4 $dir/optimized/$base\_optimized.ll) <(cat $dir/expected/$base\_expected.ll)
-    if [[ $? -eq "0" ]]; then echo "Correct results"; fi
+
+    do_differ=$?
+    exit_code+=$do_differ
+
+    if [[ $do_differ -eq "0" ]]; then echo "Correct results"; fi
 done
 
-# remove bytecode
-rm $dir/tests/*.bc
+exit $exit_code

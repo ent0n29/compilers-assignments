@@ -16,8 +16,10 @@ for file in $DIR/tests/*.ll; do
     echo -e "\nOptimization ended, checking the results"
     diff <(tail +4 $DIR/optimized/$base\_optimized.ll) <(cat $DIR/expected/$base\_expected.ll)
 
-    EXIT_CODE+=$?
-    if [[ $? -eq "0" ]]; then echo "Correct results"; fi
+    DO_DIFFER=$?
+    EXIT_CODE+=$DO_DIFFER
+    
+    if [[ $DO_DIFFER -eq "0" ]]; then echo "Correct results"; fi
 done
 
 # remove bytecode

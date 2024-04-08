@@ -1,1 +1,2 @@
-testing/optimized/
+testing/optimized/*
+!testing/optimized/.keep

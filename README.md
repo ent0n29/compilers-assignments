@@ -22,7 +22,7 @@ Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto duran
 ## Testing Logic
 
 ### Directories
-The _testing_ directory tree looks like this:
+The `testing` directory tree looks like this:
 
 ```bash
 testing
@@ -48,22 +48,22 @@ testing
 
 Where:
 - tests -> contains some samples of IR code to check if our opt passes work
-- expected -> contains the _expected outcome_, our desired results that our opt passes should reach
+- expected -> contains the `expected outcome`, our desired results that our opt passes should reach
 - optimized -> contains the IR code generated with our opt passes
   
 ### Automated testing
-the bash script _testing.sh_ automatically generates all the _optimized.ll_ and put them in _optimized_ files for every test in _tests_.
+the bash script `testing.sh` automatically generates all the `optimized.ll` and put them in `optimized` files for every test in `tests`.
 
-It also checks if every _expected.ll_ and _optimized.ll_ are equal, and if it's true, the test is passed.
+It also checks if every `expected.ll` and `optimized.ll` are equal, and if it's true, the test is passed.
 
 ## Coding Style
 ### Naming Conventions
  - Type definitions (classes, structs, and so on) -> `PascalCase`
  - Methods -> `camelCase`
- - Variables -> `camelCase` or `PascalCase`
+ - Variables -> `camelCase`
 
 ### Indentation
-In our sources, **4 spaces indentation** has been adopted "de facto"; however, the rest of LLVM project, uses **2 spaces indentation**.
+Tabs must be expanded as **2 spaces**.
 
 ## Contributors
  - Christofer Fanò [@ch-fano]

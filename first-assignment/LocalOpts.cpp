@@ -9,9 +9,11 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
-#include <map>
 #include <optional>
+#include <map>
+#include <unordered_map>
 #include <set>
+#include <unordered_set>
 
 using namespace llvm;
 
@@ -162,32 +164,43 @@ bool optBasicSR(Instruction &I) {
 bool optAlgId(Instruction &I) {
   auto opCode = I.getOpcode();
 
-  if (opCode != Instruction::Add and opCode != Instruction::Mul) return false;
+  const std::unordered_set<Instruction::BinaryOps> admittedOps = {
+    Instruction::Add, Instruction::Mul,
+    Instruction::UDiv, Instruction::SDiv, 
+    Instruction::Shl, Instruction::AShr, Instruction::LShr
+  };
+
+  if (not I.isBinaryOp()) return false;
+
+  auto operation = static_cast<Instruction::BinaryOps>(opCode);
+  if (not admittedOps.count(operation)) return false;
 
   Value *Op1 = I.getOperand(0);
   Value *Op2 = I.getOperand(1);
   ConstantInt *CI = nullptr;
 
-  // Is the operator a neutral constant of the operation?
-  // CI is set to the constant neutral operand after this function call
-  // Warning: this lambda has a side effect
-  std::function<bool(Value*)> isNeutralConstant;
+  // {key, value} map that associates each operation to the neutral
+  // constant of the operation.
+  const std::unordered_map<Instruction::BinaryOps, unsigned> neutralOperand = {
+    {Instruction::Add, 0},
+    {Instruction::Mul, 1},
+    {Instruction::SDiv, 1},
+    {Instruction::UDiv, 1},
+    {Instruction::Shl, 0},
+    {Instruction::AShr, 0},
+    {Instruction::LShr, 0}
+  };
 
-  if (opCode == Instruction::Mul) {
-    isNeutralConstant = [&CI] (Value *op) {
-      return (CI = dyn_cast<ConstantInt>(op))
-        and CI->isOne();
-    };
-  }
-    
-  if (opCode == Instruction::Add) {
-    isNeutralConstant = [&CI] (Value *op) {
-      return (CI = dyn_cast<ConstantInt>(op))
-        and CI->isZero();
-    };
-  }
+  auto isNeutralConstant = [&CI, &operation, &neutralOperand] (Value *op) {
+    auto neutralConst = neutralOperand.at(operation);
 
-  if (isNeutralConstant(Op1)) std::swap(Op1, Op2);
+    return (CI = dyn_cast<ConstantInt>(op))
+      and CI->equalsInt(neutralConst);
+  };
+
+  bool isCommutative =
+    opCode == Instruction::Add or opCode == Instruction::Mul;
+  if (isCommutative and isNeutralConstant(Op1)) std::swap(Op1, Op2);
   if (not isNeutralConstant(Op2)) return false;
 
   // If we reach this point, Op2 is always a constant integer, neutral for the operation

@@ -9,6 +9,9 @@ declare -i exit_code=0
 for file in $dir/tests/*.ll; do
 
     base=$(basename $file .ll)
+
+    if [ ! -d $dir/optimized ]; then mkdir $dir/optimized; fi
+    
     echo "----- Optimizing $base.ll -----"
 
     # run passes

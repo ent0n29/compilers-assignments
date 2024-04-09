@@ -11,6 +11,8 @@ for file in $dir/functional_tests/*.ll; do
     base=$(basename $file .ll)
     optimized=$dir/optimized/$base\_optimized.ll
 
+    if [ ! -d $dir/optimized ]; then mkdir $dir/optimized; fi
+
     echo "----- Optimizing $base.ll -----"
 
     # run passes
@@ -22,7 +24,7 @@ for file in $dir/functional_tests/*.ll; do
     do_differ=$?
     exit_code+=$do_differ
 
-    if [[ $do_differ -eq "0" ]];
+    if [ $do_differ -eq "0" ];
       then echo -e "------ PASSED $base.ll ------\n";
       else echo -e "------ FAILED $base.ll ------\n"
     fi

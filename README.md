@@ -69,3 +69,6 @@ Tabs must be expanded as **2 spaces**.
  - Christofer Fanò [@ch-fano]
  - Francesco Mecatti [@mc-cat-tty]
  - Antonio Stano [@ent0n29]
+
+## License
+MIT

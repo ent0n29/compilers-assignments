@@ -11,7 +11,7 @@ define i32 @test1(i32 noundef %0) #0 {
 }
 
 define i32 @test2(i32 noundef %0) #0 {
-  %2 = sdiv i32 %0, 8
+  %2 = sdiv exact i32 %0, 8
   ret i32 %2
 }
 
@@ -26,7 +26,7 @@ define i32 @test4(i32 noundef %0) #0 {
 }
 
 define i32 @test5(i32 noundef %0) #0 {
-  %2 = sdiv i32 %0, -8
+  %2 = sdiv exact i32 %0, -8
   ret i32 %2
 }
 
@@ -41,7 +41,7 @@ define i32 @test7(i32 noundef %0) #0 {
 }
 
 define i32 @test8(i32 noundef %0) #0 {
-  %2 = sdiv i32 800, %0
+  %2 = sdiv exact i32 800, %0
   ret i32 %2
 }
 
@@ -56,7 +56,7 @@ define i32 @test10(i32 noundef %0) #0 {
 }
 
 define i32 @test11(i32 noundef %0) #0 {
-  %2 = sdiv i32 -800, %0
+  %2 = sdiv exact i32 -800, %0
   ret i32 %2
 }
 
@@ -90,6 +90,30 @@ define i32 @main() #0 {
   %22 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %21)
   %23 = call i32 @test12(i32 noundef 101)
   %24 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %23)
+  %25 = call i32 @test1(i32 noundef -101)
+  %26 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %25)
+  %27 = call i32 @test2(i32 noundef -101)
+  %28 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %27)
+  %29 = call i32 @test3(i32 noundef -101)
+  %30 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %29)
+  %31 = call i32 @test4(i32 noundef -101)
+  %32 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %31)
+  %33 = call i32 @test5(i32 noundef -101)
+  %34 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %33)
+  %35 = call i32 @test6(i32 noundef -101)
+  %36 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %35)
+  %37 = call i32 @test7(i32 noundef -101)
+  %38 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %37)
+  %39 = call i32 @test8(i32 noundef -101)
+  %40 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %39)
+  %41 = call i32 @test9(i32 noundef -101)
+  %42 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %41)
+  %43 = call i32 @test10(i32 noundef -101)
+  %44 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %43)
+  %45 = call i32 @test11(i32 noundef -101)
+  %46 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %45)
+  %47 = call i32 @test12(i32 noundef -101)
+  %48 = call i32 (ptr, ...) @printf(ptr noundef @.str, i32 noundef %47)
   ret i32 0
 }
 

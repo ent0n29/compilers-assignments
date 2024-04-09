@@ -112,13 +112,9 @@ bool optBasicSR(Instruction &I) {
       and not CI->isOne();
   };
 
-  if (opCode == Instruction::Mul) {
-    if (isConstPowOf2(Op1)) std::swap(Op1, Op2);
-    if (not isConstPowOf2(Op2)) return false;
-  }
-  else if (opCode == Instruction::UDiv or opCode == Instruction::SDiv) {
-    if (not isConstPowOf2(Op2)) return false;
-  }
+  bool isCommutative = opCode == Instruction::Mul;
+  if (isCommutative and isConstPowOf2(Op1)) std::swap(Op1, Op2);
+  if (not isConstPowOf2(Op2)) return false;
 
   // If we reach this point, Op2 is always a constant integer, power of 2
   // The following code in hence invariant wrt operands order

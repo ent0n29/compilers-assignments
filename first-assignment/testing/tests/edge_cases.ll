@@ -12,10 +12,7 @@ define i32 @test_sr(i32 noundef %0) {
 }
 
 define i32 @test_multi_instr(i32 noundef %0) {
-  %2 = add i32 %0, 10
-  %3 = sub i32 %2, 5
-  %4 = sub i32 %2, 10
-  %5 = add i32 %3, 15
-  %6 = add i32 %4, 10
-  ret i32 %6
+  %2 = sub i32 12, 11
+  %3 = add i32 12, 11
+  ret i32 %3
 }

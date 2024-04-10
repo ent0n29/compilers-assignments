@@ -299,32 +299,37 @@ bool optMultiInstr(Instruction &I) {
 
   if (OpCode != Instruction::Add and OpCode != Instruction::Sub) return false;
 
-  using OptimizableInstr = std::optional<std::pair<Value*, ConstantInt*>>;
+  using OptimizableInstr = std::optional<std::pair<Value*, std::variant<Value*, ConstantInt*> >>;
   auto tryGetOperands = [](const Instruction &I) -> OptimizableInstr {
     Value *Op1 = I.getOperand(0);
     Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
-    const bool isCommutative = I.getOpcode() == Instruction::Add;
-    if (isCommutative and (CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
-    if (not (CI = dyn_cast<ConstantInt>(Op2))) return std::nullopt;
+    if (I.isCommutative() and (CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
 
-    // Invariant code wrt operands order
-    return OptimizableInstr{{Op1, CI}};
+    (CI = dyn_cast<ConstantInt>(Op2)) ? return OptimizableInstr{{Op1, CI}} : return OptimizableInstr{{Op1, Op2}};
   };
-
-  // If this instruction has not the desired structure, exit
-  OptimizableInstr ThisInstrOperands = tryGetOperands(I);
-  if (not ThisInstrOperands) return false;
   
-  // Or if the non constant operand is not the result of a
+  OptimizableInstr ThisInstrOperands = tryGetOperands(I);
+  
+  // If the non constant operand is not the result of a
   // previous instruction (eg. a constant), exit
   Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
   if (not PrevInstr) return false;
 
-  // If the previous instruction has not the desired structure, exit
+  // Check if variable nullification is possible
+  Value* SecondOperand = nullptr;
+  Instruction *OtherPrevInstr = nullptr;
+  try{
+     SecondOperand = std::get<Value*>(ThisInstrOperands->second);
+  }catch(...){ ; }
+  if (SecondOperand)  OtherPrevInstr = dyn_cast<Instruction>(SecondOperand);
+  const bool tryVarNullification = I.isCommutative() and OtherPrevInstr;
+  
+
   OptimizableInstr PrevInstrOperands = tryGetOperands(*PrevInstr);
-  if (not PrevInstrOperands) return false;
+  OptimizableInstr OtherPrevInstrOperands;
+  if (tryVarNullification) OtherPrevInstrOperands = tryGetOperands(*OtherPrevInstr);
 
   // Map of inverse operations
   const std::map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
@@ -332,17 +337,86 @@ bool optMultiInstr(Instruction &I) {
     {Instruction::Sub, Instruction::Add}
   };
 
+  bool areInverseOperationsOther = false;
   bool areInverseOperations = 
     InverseOperators.at(static_cast<Instruction::BinaryOps>(OpCode)) == PrevInstr->getOpcode();
-  if (not areInverseOperations) return false;
-
-  bool haveSameConstant =
-    ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
-  if (not haveSameConstant) return false;
-
-  errs() << "Triggered multi-instruction optimization\n";
-
-  I.replaceAllUsesWith(PrevInstrOperands->first);
   
+  if (not areInverseOperations and tryVarNullification) areInverseOperationsOther = 
+    InverseOperators.at(static_cast<Instruction::BinaryOps>(OpCode)) == OtherPrevInstr->getOpcode();   
+  if (not areInverseOperations and not areInverseOperationsOther) return false;
+
+  bool optimized = false;
+  try{
+    
+    ConstantInt* ThisSecondOperand = std::get<ConstantInt*>(ThisInstrOperands->second);
+    ConstantInt* PrevSecondOperand = std::get<ConstantInt*>(PrevInstrOperands->second);
+    bool haveSameOperand =
+    ThisSecondOperand->getValue() == PrevSecondOperand->getValue();
+    
+    //Both operands are integer but they are not the same number
+    if (not haveSameOperand) return false;
+
+    errs() << "Triggered multi-instruction optimization\n";
+
+    I.replaceAllUsesWith(PrevInstrOperands->first);
+    optimized = true;
+    
+  }catch(...){ ; }
+
+  if (not optimized and OpCode == Instruction::Add){ 
+    
+    // try with the first operand which has to have the second operand of the
+    // previous instruction equal to the second operand of the actual instruction
+    Value* ThisSecondOperand = std::get<Value*>(ThisInstrOperands->second);
+    try{
+      Value* PrevSecondOperand = std::get<Value*>(PrevInstrOperands->second);
+      
+      if (ThisSecondOperand->isSameOperationAs(PrevSecondOperand)) 
+      {
+        errs() << "Triggered multi-instruction optimization\n";
+        I.replaceAllUsesWith(PrevInstrOperands->first);
+        optimized= true;
+      }
+    }catch(...){ ; }
+
+    // try with the second operand which has to have the second operand of the
+    // previous instruction equal to the first operand of the actual instruction
+    if(not optimized and tryVarNullification)
+      try{
+        Value* PrevSecondOperand = std::get<Value*>(OtherPrevInstrOperands->second);
+        
+        if(ThisInstrOperands->first->isSameOperationAs(PrevSecondOperand))
+        {
+          errs() << "Triggered multi-instruction optimization\n";
+          I.replaceAllUsesWith(ThisSecondOperand);
+          optimized= true;
+        }
+      }catch(...){ ; }
+  }
+
+
+  if (not optimized and OpCode == Instruction::Sub){
+
+    // try with the first operand which has to have the second operand of the
+    // previous instruction equal to the second operand of the actual instruction
+    Value* ThisSecondOperand = std::get<Value*>(ThisInstrOperands->second);
+    Value* NewVal = nullptr;
+    try{
+      Value* PrevFirstOperand = std::get<Value*>(PrevInstrOperands->first);
+      Value* PrevSecondOperand = std::get<Value*>(PrevInstrOperands->second);
+
+      if (ThisSecondOperand->isSameOperationAs(PrevFristOperand)) 
+        NewVal = PrevSecondOperand;
+      else if(ThisSecondOperand->isSameOperationAs(PrevSecondOperand))
+        NewVal = PrevFirstOperand;
+
+      if(not NewVal){
+        errs() << "Triggered multi-instruction optimization\n";
+        I.replaceAllUsesWith(NewVal);
+        optimized= true;
+      }
+    }catch(...){ ; }
+  }
+
   return true;
 }

@@ -16,7 +16,7 @@ for file in $dir/functional_tests/*.ll; do
     echo "----- Optimizing $base.ll -----"
 
     # run passes
-    opt -p localopts $file -S -o $optimized
+    /home/christofer/workspace/LLVM_17/BUILD/bin/opt -p localopts $file -S -o $optimized
 
     echo "Optimization ended, comparing stdout"
     diff <(lli $optimized) <(lli $file)

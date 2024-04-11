@@ -316,32 +316,26 @@ bool optMultiInstr(Instruction &I) {
 
   if (opCode != Instruction::Add and opCode != Instruction::Sub) return false;
 
-  using OptimizableInstr = std::optional<std::pair<Value*, ConstantInt*>>;
-  auto tryGetOperands = [](const Instruction &I) -> OptimizableInstr {
+  using OptimizableConstInstr = std::optional<std::pair<Value*, ConstantInt*>>;
+  auto tryGetConstOperands = [](const Instruction &I) -> OptimizableConstInstr {
     Value *Op1 = I.getOperand(0);
     Value *Op2 = I.getOperand(1);
     ConstantInt *CI = nullptr;
 
-    const bool isCommutative = I.getOpcode() == Instruction::Add;
-    if (isCommutative and (CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
+    if (I.isCommutative() and (CI = dyn_cast<ConstantInt>(Op1))) std::swap(Op1, Op2);
     if (not (CI = dyn_cast<ConstantInt>(Op2))) return std::nullopt;
 
     // Invariant code wrt operands order
-    return OptimizableInstr{{Op1, CI}};
+    return OptimizableConstInstr{{Op1, CI}};
   };
-
-  // If this instruction has not the desired structure, exit
-  OptimizableInstr ThisInstrOperands = tryGetOperands(I);
-  if (not ThisInstrOperands) return false;
   
-  // Or if the non constant operand is not the result of a
-  // previous instruction (eg. a constant), exit
-  Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
-  if (not PrevInstr) return false;
+  using OptimizableVarInstr = std::optional<std::pair<Value*, Value*>>;
+  auto GetVarOperands = [](const Instruction &I) -> OptimizableVarInstr {
+    Value *Op1 = I.getOperand(0);
+    Value *Op2 = I.getOperand(1);
 
-  // If the previous instruction has not the desired structure, exit
-  OptimizableInstr PrevInstrOperands = tryGetOperands(*PrevInstr);
-  if (not PrevInstrOperands) return false;
+    return OptimizableVarInstr{{Op1, Op2}};
+  };
 
   // Map of inverse operations
   const std::unordered_map<Instruction::BinaryOps, Instruction::BinaryOps> InverseOperators = {
@@ -349,17 +343,41 @@ bool optMultiInstr(Instruction &I) {
     {Instruction::Sub, Instruction::Add}
   };
 
-  bool areInverseOperations = 
-    InverseOperators.at(static_cast<Instruction::BinaryOps>(opCode)) == PrevInstr->getOpcode();
-  if (not areInverseOperations) return false;
+  enum ExitCode { TryVarNullification, Fail, Success };
+  auto tryConstantNullification = [&tryGetConstOperands, &InverseOperators](Instruction &I) -> ExitCode {
 
-  bool haveSameConstant =
-    ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
-  if (not haveSameConstant) return false;
+    // If this instruction has not the desired structure, exit
+    OptimizableConstInstr ThisInstrOperands = tryGetConstOperands(I);
+    if (not ThisInstrOperands) return TryVarNullification;
 
-  errs() << "Triggered multi-instruction optimization\n";
+    // Or if the non constant operand is not the result of a
+    // previous instruction (eg. a constant), exit
+    Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
+    if (not PrevInstr) return Fail;
 
-  I.replaceAllUsesWith(PrevInstrOperands->first);
+    // If the previous instruction has not the desired structure, exit
+    OptimizableConstInstr PrevInstrOperands = tryGetConstOperands(*PrevInstr);
+    if (not PrevInstrOperands) return Fail;
+
+    bool areInverseOperations = 
+      InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevInstr->getOpcode();
+    if (not areInverseOperations) return Fail;
+
+    bool haveSameConstant =
+      ThisInstrOperands->second->getValue() == PrevInstrOperands->second->getValue();
+    if (not haveSameConstant) return Fail;
+
+    errs() << "Triggered multi-instruction optimization\n";
+
+    I.replaceAllUsesWith(PrevInstrOperands->first);
+    
+    return Success;
+  };
+
+  ExitCode operationResult = tryConstantNullification(I);
+  if(operationResult == Fail) return false;
+  if(operationResult == Success) return true;
+
+  errs()<<"Try var nullification\n";
   
-  return true;
 }

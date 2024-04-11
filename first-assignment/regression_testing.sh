@@ -15,7 +15,7 @@ for file in $dir/tests/*.ll; do
     echo "----- Optimizing $base.ll -----"
 
     # run passes
-    opt -p localopts $file -S -o $dir/optimized/$base\_optimized.ll
+    /home/christofer/workspace/LLVM_17/BUILD/bin/opt -p localopts $file -S -o $dir/optimized/$base\_optimized.ll
 
     echo "Optimization ended, checking the results"
     diff <(tail +4 $dir/optimized/$base\_optimized.ll) <(cat $dir/expected/$base\_expected.ll)

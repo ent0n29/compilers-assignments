@@ -316,6 +316,11 @@ bool optMultiInstr(Instruction &I) {
 
   if (opCode != Instruction::Add and opCode != Instruction::Sub) return false;
 
+  /* fails with:
+   * number   - variable
+   * variable - variable
+   * variable + variable
+   */
   using OptimizableConstInstr = std::optional<std::pair<Value*, ConstantInt*>>;
   auto tryGetConstOperands = [](const Instruction &I) -> OptimizableConstInstr {
     Value *Op1 = I.getOperand(0);
@@ -374,10 +379,116 @@ bool optMultiInstr(Instruction &I) {
     return Success;
   };
 
+  auto tryVariableNullification = [&tryGetVarOperands, &InverseOperators](Instruction &I) -> bool {
+
+    // If this instruction has not the desired structure, exit
+    OptimizableVarInstr ThisInstrOperands = GetVarOperands(I);
+
+    // If the non constant operand is not the result of a
+    // previous instruction (eg. a constant), exit
+    Instruction *PrevFirstInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
+    if(not PrevFirstInstr) return false;
+  
+    /* If the instruction is an add we have to check both cases:
+     * c = a + b   =>  a = d - b       or       b = d - a
+     * c = a + b   =>  a = number - b  or       b = number - a   
+    */ 
+    if(I.getOpcode() == Instruction::Add){
+      
+      bool areInverseOperations = 
+        InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevFirstInstr->getOpcode();
+      
+      if(areInverseOperations){
+        
+        OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(*PrevFirstInstr);
+        
+        if (ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->second))){
+         
+          errs() << "Triggered multi-instruction optimization\n";
+          I.replaceAllUsesWith(PrevFirstInstrOperands->first);  
+
+          return true;
+        }
+
+      }
+
+      // If we are here something goes wrong with the first operand
+      Instruction *PrevSecondInstr = dyn_cast<Instruction>(ThisInstrOperands->second);
+
+      areInverseOperations = 
+      InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevSecondInstr->getOpcode();
+      if(not areInverseOperations) return false;
+
+      OptimizableVarInstr PrevSecondInstrOperands = GetVarOperands(*PrevSecondInstr);
+      if (ThisInstrOperands->first->isSameOperationAs(dyn_cast<Instruction>(PrevSecondInstrOperands->second))){
+         
+          errs() << "Triggered multi-instruction optimization\n";
+          I.replaceAllUsesWith(PrevSecondInstrOperands->first);  
+
+          return true;
+        }
+
+    }
+
+
+    /* If the instruction is a sub we have to check both cases:
+     * c = a - b   =>  a = b + d       or       a = d + b
+     * c = a - b   =>  a = b + number  or       a = number + b   
+    */ 
+    if(I.getOpcode() == Instruction::Sub){
+      
+      bool areInverseOperations = 
+        InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevFirstInstr->getOpcode();
+        if (not areInverseOperations) return false;
+
+      // We have to check if the sum of the previous element contains variables or numbers
+      OptimizableConstInstr PrevFirstInstrOperands = tryGetConstOperands(PrevFirstInstr);
+      if (not PrevFirstInstrOperands){
+        //The operands of the prevoius instructions are two variables
+        OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(PrevFirstInstr);
+
+        //When we are here the two operands are variables and both could be nullified
+        bool haveSameVariables =
+          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first)) or 
+          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->second));
+        
+        if (haveSameVariables){
+         
+          errs() << "Triggered multi-instruction optimization\n";
+
+          if(ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first)))
+            I.replaceAllUsesWith(PrevFirstInstrOperands->second);
+          else
+            I.replaceAllUsesWith(PrevFirstInstrOperands->first);  
+
+          return true;
+        }
+      }else{
+        //The operands of the previous instructions are a variable and a number
+
+        // Only the first operand could be nullified
+        bool haveSameVariables =
+          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first));
+        
+        if (haveSameVariables){
+         
+          errs() << "Triggered multi-instruction optimization\n";
+          I.replaceAllUsesWith(PrevFirstInstrOperands->second);
+           
+
+          return true;
+        }        
+      }
+    }
+
+    return false;
+  };
+
+
   ExitCode operationResult = tryConstantNullification(I);
   if(operationResult == Fail) return false;
   if(operationResult == Success) return true;
 
-  errs()<<"Try var nullification\n";
+  return tryVariableNullification(I);
   
 }

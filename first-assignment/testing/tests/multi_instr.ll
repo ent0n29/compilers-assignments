@@ -53,6 +53,15 @@ define i32 @test7(i32 noundef %0) {
   ret i32 %3
 }
 
+; Placebo test: first try var nullification
+define i32 @test8(i32 noundef %0) #0 {
+  %2 = add i32 10, 0
+  %3 = add i32 %2, 10
+  %4 = sub nsw i32 %3, %0
+  %5 = add nsw i32 %0, %4
+  ret i32 %5
+}
+
 define i32 @main() {
   %1 = call i32 @test1(i32 101)
   ret i32 %1

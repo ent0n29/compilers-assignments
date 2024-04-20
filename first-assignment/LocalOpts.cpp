@@ -352,15 +352,18 @@ bool optMultiInstr(Instruction &I) {
   auto tryConstantNullification = [&tryGetConstOperands, &InverseOperators](Instruction &I) -> ExitCode {
 
     // If this instruction has not the desired structure, exit
+    // Three possible cases to try var nulllifaction: number - var , var + var, var - var 
     OptimizableConstInstr ThisInstrOperands = tryGetConstOperands(I);
     if (not ThisInstrOperands) return TryVarNullification;
 
     // Or if the non constant operand is not the result of a
     // previous instruction (eg. a constant), exit
+    // Two possible cases to exit: number - number, number + number
     Instruction *PrevInstr = dyn_cast<Instruction>(ThisInstrOperands->first);
     if (not PrevInstr) return Fail;
 
     // If the previous instruction has not the desired structure, exit
+    // Exit means the second operand is a variable 
     OptimizableConstInstr PrevInstrOperands = tryGetConstOperands(*PrevInstr);
     if (not PrevInstrOperands) return Fail;
 
@@ -413,6 +416,7 @@ bool optMultiInstr(Instruction &I) {
       }
 
       // If we are here something goes wrong with the first operand
+      // Two possible cases: not the opposite binary operation or not the same operand
       Instruction *PrevSecondInstr = dyn_cast<Instruction>(ThisInstrOperands->second);
 
       areInverseOperations = 
@@ -467,10 +471,7 @@ bool optMultiInstr(Instruction &I) {
         //The operands of the previous instructions are a variable and a number
 
         // Only the first operand could be nullified
-        bool haveSameVariables =
-          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first));
-        
-        if (haveSameVariables){
+        if (ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first))){
          
           errs() << "Triggered multi-instruction optimization\n";
           I.replaceAllUsesWith(PrevFirstInstrOperands->second);

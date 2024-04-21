@@ -9,6 +9,7 @@
 #include "llvm/Transforms/Utils/LocalOpts.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/IRBuilder.h"
 #include <optional>
 #include <map>
 #include <unordered_map>
@@ -382,7 +383,9 @@ bool optMultiInstr(Instruction &I) {
     return Success;
   };
 
-  auto tryVariableNullification = [&tryGetVarOperands, &InverseOperators](Instruction &I) -> bool {
+  auto tryVariableNullification = [&tryGetConstOperands, &GetVarOperands, &InverseOperators](Instruction &I) -> bool {
+    
+    IRBuilderBase llvmbuilder;
 
     // If this instruction has not the desired structure, exit
     OptimizableVarInstr ThisInstrOperands = GetVarOperands(I);
@@ -404,8 +407,8 @@ bool optMultiInstr(Instruction &I) {
       if(areInverseOperations){
         
         OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(*PrevFirstInstr);
-        
-        if (ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->second))){
+        auto diff = llvmbuilder.CreatePtrDiff(ThisInstrOperands->second->getType(), ThisInstrOperands->second, PrevFirstInstrOperands->second);
+        if (dyn_cast<ConstantInt>(diff) == 0){
          
           errs() << "Triggered multi-instruction optimization\n";
           I.replaceAllUsesWith(PrevFirstInstrOperands->first);  
@@ -424,7 +427,8 @@ bool optMultiInstr(Instruction &I) {
       if(not areInverseOperations) return false;
 
       OptimizableVarInstr PrevSecondInstrOperands = GetVarOperands(*PrevSecondInstr);
-      if (ThisInstrOperands->first->isSameOperationAs(dyn_cast<Instruction>(PrevSecondInstrOperands->second))){
+      auto diff = llvmbuilder.CreatePtrDiff(ThisInstrOperands->first->getType(), ThisInstrOperands->first, PrevSecondInstrOperands->second);
+      if (dyn_cast<ConstantInt>(diff) == 0){
          
           errs() << "Triggered multi-instruction optimization\n";
           I.replaceAllUsesWith(PrevSecondInstrOperands->first);  
@@ -443,24 +447,26 @@ bool optMultiInstr(Instruction &I) {
       
       bool areInverseOperations = 
         InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevFirstInstr->getOpcode();
-        if (not areInverseOperations) return false;
+      if (not areInverseOperations) return false;
 
       // We have to check if the sum of the previous element contains variables or numbers
-      OptimizableConstInstr PrevFirstInstrOperands = tryGetConstOperands(PrevFirstInstr);
+      OptimizableConstInstr PrevFirstInstrOperands = tryGetConstOperands(*PrevFirstInstr);
       if (not PrevFirstInstrOperands){
         //The operands of the prevoius instructions are two variables
-        OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(PrevFirstInstr);
+        OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(*PrevFirstInstr);
+
+        auto diff1 = llvmbuilder.CreatePtrDiff(ThisInstrOperands->second->getType(), ThisInstrOperands->second, PrevFirstInstrOperands->first);
+        auto diff2 = llvmbuilder.CreatePtrDiff(ThisInstrOperands->second->getType(), ThisInstrOperands->second, PrevFirstInstrOperands->second);
+        
 
         //When we are here the two operands are variables and both could be nullified
-        bool haveSameVariables =
-          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first)) or 
-          ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->second));
+        bool haveSameVariables = dyn_cast<ConstantInt>(diff1) == 0 or dyn_cast<ConstantInt>(diff2) == 0;
         
         if (haveSameVariables){
          
           errs() << "Triggered multi-instruction optimization\n";
 
-          if(ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first)))
+          if(dyn_cast<ConstantInt>(diff1) == 0)
             I.replaceAllUsesWith(PrevFirstInstrOperands->second);
           else
             I.replaceAllUsesWith(PrevFirstInstrOperands->first);  
@@ -469,9 +475,10 @@ bool optMultiInstr(Instruction &I) {
         }
       }else{
         //The operands of the previous instructions are a variable and a number
-
+        
+        auto diff = llvmbuilder.CreatePtrDiff(ThisInstrOperands->second->getType(), ThisInstrOperands->second, PrevFirstInstrOperands->first);
         // Only the first operand could be nullified
-        if (ThisInstrOperands->second->isSameOperationAs(dyn_cast<Instruction>(PrevFirstInstrOperands->first))){
+        if (dyn_cast<ConstantInt>(diff) == 0){
          
           errs() << "Triggered multi-instruction optimization\n";
           I.replaceAllUsesWith(PrevFirstInstrOperands->second);

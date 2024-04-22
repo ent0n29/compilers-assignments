@@ -53,7 +53,7 @@ define i32 @test7(i32 noundef %0) {
   ret i32 %3
 }
 
-; Placebo test: first try var nullification
+; Placebo test: first try var nullification add
 define i32 @test8(i32 noundef %0) #0 {
   %2 = add i32 20, %0
   %3 = sub nsw i32 %2, %0
@@ -61,7 +61,7 @@ define i32 @test8(i32 noundef %0) #0 {
   ret i32 %4
 }
 
-; Placebo test: first try var nullification
+; Placebo test: first try var nullification add
 define i32 @test9(i32 noundef %0) #0 {
   %2 = add i32 20, %0
   %3 = sub nsw i32 %2, %0
@@ -69,7 +69,7 @@ define i32 @test9(i32 noundef %0) #0 {
   ret i32 %4
 }
 
-; Placebo test: first try var nullification
+; Placebo test: first try var nullification sub
 define i32 @test10(i32 noundef %0) #0 {
   %2 = add i32 20, %0
   %3 = add nsw i32 %2, %0
@@ -77,7 +77,7 @@ define i32 @test10(i32 noundef %0) #0 {
   ret i32 %4
 }
 
-; Placebo test: first try var nullification
+; Placebo test: first try var nullification sub
 define i32 @test11(i32 noundef %0) #0 {
   %2 = add i32 20, %0
   %3 = add nsw i32 %0, %2

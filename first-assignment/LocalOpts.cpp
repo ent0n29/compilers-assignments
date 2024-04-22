@@ -384,7 +384,6 @@ bool optMultiInstr(Instruction &I) {
   };
 
   auto tryVariableNullification = [&tryGetConstOperands, &GetVarOperands, &InverseOperators](Instruction &I) -> bool {
-    
     // If this instruction has not the desired structure, exit
     OptimizableVarInstr ThisInstrOperands = GetVarOperands(I);
 
@@ -394,11 +393,10 @@ bool optMultiInstr(Instruction &I) {
     if(not PrevFirstInstr) return false;
   
     /* If the instruction is an add we have to check both cases:
-     * c = a + b   =>  a = d - b       or       b = d - a
-     * c = a + b   =>  a = number - b  or       b = number - a   
+     * c = a + b   =>  a = d - b       or       a = number - b
+     * c = a + b   =>  b = d - a       or       b = number - a   
     */ 
     if(I.getOpcode() == Instruction::Add){
-      
       bool areInverseOperations = 
         InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevFirstInstr->getOpcode();
       
@@ -414,10 +412,10 @@ bool optMultiInstr(Instruction &I) {
         }
 
       }
-
       // If we are here something goes wrong with the first operand
       // Two possible cases: not the opposite binary operation or not the same operand
       Instruction *PrevSecondInstr = dyn_cast<Instruction>(ThisInstrOperands->second);
+      if (not PrevSecondInstr) return false;
 
       areInverseOperations = 
       InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevSecondInstr->getOpcode();
@@ -440,20 +438,22 @@ bool optMultiInstr(Instruction &I) {
      * c = a - b   =>  a = b + number  or       a = number + b   
     */ 
     if(I.getOpcode() == Instruction::Sub){
-      
+
       bool areInverseOperations = 
         InverseOperators.at(static_cast<Instruction::BinaryOps>(I.getOpcode())) == PrevFirstInstr->getOpcode();
       if (not areInverseOperations) return false;
-
+      
       // We have to check if the sum of the previous element contains variables or numbers
       OptimizableConstInstr PrevFirstInstrOperands = tryGetConstOperands(*PrevFirstInstr);
+      
       if (not PrevFirstInstrOperands){
+      
         //The operands of the prevoius instructions are two variables
         OptimizableVarInstr PrevFirstInstrOperands = GetVarOperands(*PrevFirstInstr);
-
+      
         //When we are here the two operands are variables and both could be nullified
         bool haveSameVariables = ThisInstrOperands->second == PrevFirstInstrOperands->first or ThisInstrOperands->second == PrevFirstInstrOperands->second;
-        
+      
         if (haveSameVariables){
          
           errs() << "Triggered multi-instruction optimization\n";
@@ -467,7 +467,7 @@ bool optMultiInstr(Instruction &I) {
         }
       }else{
         //The operands of the previous instructions are a variable and a number
-        
+
         // Only the first operand could be nullified
         if (ThisInstrOperands->second == PrevFirstInstrOperands->first){
          
@@ -482,7 +482,6 @@ bool optMultiInstr(Instruction &I) {
 
     return false;
   };
-
 
   ExitCode operationResult = tryConstantNullification(I);
   if(operationResult == Fail) return false;

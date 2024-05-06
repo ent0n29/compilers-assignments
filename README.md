@@ -4,7 +4,7 @@ Various optimizations passes leveraging the LLVM IR.
 
 This repository contains a standalone version of the optimization passes, tested for LLVM 17.0.6. A full version of LLVM's source code, with our passes plugged-in, can be found [here](https://github.com/mc-cat-tty/llvm-17.0.6-compilers).
 
-## Primo assignment
+## First assignment
 
 Implementare tre passi LLVM (dentro lo stesso passo LocalOpts già scritto durante il LAB 2) che realizzano le seguenti ottimizzazioni locali:
  
@@ -64,6 +64,35 @@ It also checks if every `expected.ll` and `optimized.ll` are equal, and if it's 
 
 ### Indentation
 Tabs must be expanded as **2 spaces**.
+
+## Second Assignment
+### Dataflow Analysis Assignment
+
+**For each of the following three analysis problems:**
+
+1. Derive a formalization for the Dataflow Analysis framework, filling in the table with the appropriate  
+   parameters:
+   - Domain
+   - Direction
+   - Transfer Function
+   - Meet Operator
+   - Boundary Condition
+   - Initial interior points
+     
+2. For the provided example CFG, populate a table with the iterations of the iterative algorithm solving the problem:
+   
+|      | Iterazione 1 |          | Iterazione 2 |          | Iterazione 3 |          |
+|------|--------------|----------|--------------|----------|--------------|----------|
+|      | IN[B]        | OUT[B]   | IN[B]        | OUT[B]   | IN[B]        | OUT[B]   |
+| BB1  | <...>        | <...>    |              |          |              |          |
+| BB2  |              |          |              |          |              |          |
+| BB3  |              |          |              |          |              |          |
+
+### 1. Very Busy Expressions
+
+### 2. Dominator Analysis
+
+### 3. Constant Propagation
 
 ## Contributors
  - Christofer Fanò [@ch-fano]

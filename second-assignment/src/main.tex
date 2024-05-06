@@ -21,7 +21,7 @@
 
         \begin{table}[H]
             \centering
-            \resizebox{\textwidth}{!}{
+            \resizebox{17.5cm}{!}{
             \begin{tabular}{|c|c|c|c|}
                 \hline
                 \textbf{} & \textbf{Very Busy Expressions} & \textbf{Dominators Analysis} & \textbf{Constant Propagation} \\
@@ -31,7 +31,7 @@
                 \textbf{Boundary Conditions} & $In[BB_{Exit}] = \emptyset$ & $Out[BB_{Entry}] = \{BB_{Entry}\}$ & $Out[BB_{Entry}] = \emptyset$ \\
                 \textbf{Transfer Function} & $In[BB_i] = Gen[BB_i] \cup (Out[BB_i] \setminus Kill[BB_i])$ & $Out[BB_i] = In[BB_i] \cup \{BB_i\}$ & $Out[BB_i] = Gen[BB_i] \cup (In[BB_i] \setminus Kill[BB_i])$ \\
                 \textbf{Meet Operator} & $\cap$ & $\cap$ & $\cap$ \\
-                \textbf{Internal Points Init} & $In[BB_i] = \mathbb{U} \space \forall i \neq Exit$ & $Out[BB_i] = \mathbb{U} \space \forall i \neq BB_{Entry}$ & $Out[BB_i] = \mathbb{U} \forall i \neq BB_{Entry}$ \\
+                \textbf{Internal Points Init} & $In[BB_i] = \mathbb{U} \space \forall i \neq BB_{Exit}$ & $Out[BB_i] = \mathbb{U} \space \forall i \neq BB_{Entry}$ & $Out[BB_i] = \mathbb{U} \forall i \neq BB_{Entry}$ \\
                 \hline
             \end{tabular}
             }
@@ -88,12 +88,14 @@
                 \hline
                 \textbf{Basic Block Name} & \textbf{Gen(BB)} & \textbf{Kill(BB)} \\
                 \hline
+                \textbf{Entry} & Ø & Ø \\
                 \textbf{BB2} & Ø & Ø \\
                 \textbf{BB3} & b - a & Ø \\
                 \textbf{BB4} & a - b & Ø \\
                 \textbf{BB5} & b - a & Ø \\
                 \textbf{BB6} & Ø & b - a , a - b\\
                 \textbf{BB7} & a - b & Ø \\
+                \textbf{Exit}  & Ø & Ø \\
                 \hline
             \end{tabular}
             \caption{Gen-Kill Table}
@@ -124,9 +126,6 @@
 
         The execution stops after the first iteration since there are no back-edges in the CFG.
 
-        % \subsection*{Final Considerations}
-            
-
 \chapter*{Dominator Analysis}
 
     \section*{Problem Definition}
@@ -149,18 +148,18 @@
         
         The data flow direction is \textbf{forward}, since the concept of dominance is defined in the "past".
         
-        The \textbf{meet operator} can be inferred by the definition: \textit{... for each path from Entry to Y ...}, is equivalent to set intersection.
+        The \textbf{meet operator} can be inferred by the definition: \textit{[...] for each path from Entry to Y [...]}, is equivalent to set intersection.
         
         Given that kind of meet operator, along with the need to keep the \textbf{intersection} with uncomputed interior points \textbf{neutral}, interior points are initialized according to the following formula: 
         $Out[BB_i] = \mathbb{U} \space \; \forall i \neq Entry$.
         
-        The analysis is kick-started by $Out[BB_{Entry}] = Entry$, since according to the definition: \textit{each node dominates itself}.
+        The analysis is kick-started by $Out[BB_{Entry}] = Entry$, since according to the definition: \textit{[...] each node dominates itself [...]}.
 
         \subsection*{Transfer Function's Sets Definition}
         
             Each basic block $BB_i$ \textbf{inherits} a set of expressions from its \textbf{predecessor} $BB_{i-1}$; this set makes up the block's input set $B_i$: $$In[BB_i] = Out[BB_{i-1}] \; \forall BB_i \in CFG : i \neq Entry$$
         
-            The \textbf{kill set is empty} because, considering each node $BB_i$, name conflicts don't show up. Each node \textbf{add} to the dominators' set \textbf{itself} without deleting other elements. Some elements could be removed only by applying the \textbf{intersection} between the \textbf{dominators sets coming from different paths}.  $$Kill[BB_i] = \emptyset \; \forall BB_i \in CFG$$
+            The \textbf{kill set is empty} because, considering each node $BB_i$, name conflicts don't show up. Each node \textbf{adds} \textbf{itself} to the dominators' set without deleting other elements. As a consequence, the only reason to remove an element from the dominators' set is due to the \textbf{intersection} between the \textbf{dominators' sets coming from different paths}.  $$Kill[BB_i] = \emptyset \; \forall BB_i \in CFG$$
 
             Lastly, as mentioned above, the \textbf{Gen-set} of the $BB_i$ is defined as a set with only the $BB_i$ since \textbf{each node dominates itself}: $$Gen[BB_i] = \{ BB_i \} \; \forall BB_i \in CFG$$ 
 
@@ -217,6 +216,8 @@
         
     \subsection*{Dominator Tree}
 
+        Below is reported the \textbf{Dominator Tree} obtained by applying the algorithm of \textbf{Dominator Analysis}. The following graph is pretty self-explainatory, it represents the \textbf{dominance relationship} between \textbf{parent-child nodes}, and it follows the rules of the Iput/Output table, where each parent node dominates their childs and each node dominates itself.  
+        
         \vspace{1cm}
         
         \begin{center}
@@ -242,69 +243,73 @@
         \end{center}
 
 \chapter*{Constant Propagation}
-
+\label{chap:Constant Propagation}
     \section*{Problem Definition}
 
-        The goal of \textbf{constant propagation} is to determine at which points in the program variables have a constant value.
+        The goal of \textbf{constant propagation} is to determine in which points of the program variables have a constant value.
         
-        The information to be computed for each node \textbf{n} of the Control Flow Graph (\textbf{CFG}) is a set of pairs of the form $<\textbf{variable,\; constant value}>$.
+        The information to be computed for each node \textbf{n} of the Control Flow Graph (\textbf{CFG}) is a set of pairs in the form $<\textbf{variable,\; constant value}>$.
         
         If we have the pair $<\textbf{x,\; c}>$ at node \textit{n}, it means that x is guaranteed to have the value \textit{c} every time \textit{n} is reached during program execution.
 
     
     \section*{DFA Solution}
 
-        This solution works under the assumption that the transfer function can integrate some piece of logic. In particular, some sort of expression-solving mechanism is needed to compute expressions such as $k+2$, expanding them to a constant value. For instance, $k+2$ expression in BB3 of \ref{fig:cp_iteration_image}, should become $4$ after passing through BB3's transfer function.
+        This solution works under the \textbf{assumption that the transfer function can integrate some piece of logic}. In particular, some sort of expression-solving mechanism is needed to compute expressions such as $k+2$, expanding them to a constant value. For instance, $k+2$ expression in BB3 of Figure \ref{fig:cp_iteration_image}, should become $4$ after passing through BB3's transfer function.
 
-        Consequently, the domain of this problem, defined as the set of tuples $<\textbf{variable, constant value}>$, is variable-sized, thus making unfeasible a bit-vector implementation. This is due to the fact we have no prior knowledge about the number of tuples that could appear while algorithm is executing. As a matter of fact, 
+        Consequently, the domain of this problem, defined as the set of tuples $<\textbf{variable, constant value}>$, is \textbf{variable-sized}, thus making unfeasible a bit-vector implementation. This is due to the fact we have \textbf{no prior knowledge} about the number of tuples that could appear while algorithm is executing.
+        As a matter of fact, by solving an expression, a new tuple could be generated at "runtime".
 
-        For a solution that admits a bit-vector implementation, have a look at our considerations in \textbf{~\nameref{chap:Constant Propagation with Fixed-size Domain}}.
+        For a solution that admits a \textbf{bit-vector implementation}, have a look at our considerations in the next \textbf{\autoref{chap:Constant Propagation with Fixed-size Domain}}.
         
-        We defined the domain of the problem as a set of definitions with literal or constant values as RHS, represented as tuples $<\textbf{variable, \;constant \;value}>$.
+        We defined the \textbf{domain} of the problem as a \textbf{set of definitions with literal or constant values as RHS, represented as tuples} $<\textbf{variable, \;constant \;value}>$.
         
+        The data flow is oriented \textbf{forward} because it's essential to reference past values of variables to ensure which ones remain constant.
         
-        The data flow is oriented forward because it's essential to reference past values of variables to ensure which ones remain constant.
+        The \textbf{meet operator} is equivalent to \textbf{set intersection} because a variable is deemed constant only if it's confirmed across every potential path.
         
-        The meet operator is equivalent to set intersection because a variable is deemed constant only if it's confirmed across every potential path.
+        Given that kind of meet operator, along with the need to keep the intersection with uncomputed interior points neutral, \textbf{interior points} are initialized according to the following formula: $Out[BB_i] = \mathbb{U} \; \forall i \neq Entry$.
         
-        Given that kind of meet operator, along with the need to keep the intersection with uncomputed interior points neutral, interior points are initialized according to the following formula: $Out[BB_i] = \mathbb{U} \space \forall i \neq Entry$.
+        The analysis is kick-started by $Out[BB_{Entry}] = \emptyset$.
         
-         The analysis is kick-started by $Out[BB_{Entry}] = \emptyset$.
-
-         The solution should use a dynamic size dictionary, because determining the value of a variable defined using operands with constant values requires computation. Each dictionary element's key consists of a pair $<\textbf{variable,\; constant \; value}>$ associated to a boolean value representing whether the variable assumes a constant value at that program point.
-
+        The solution uses a \textbf{dynamic sized dictionary} to keep track of the variable's value which was computed using operands with constant values. Each dictionary element's key consists of a pair $<\textbf{variable,\; constant \; value}>$ associated to a boolean value representing whether the variable assumes the constant value at a specific point of the program.
+        
     \subsection*{Transfer Function's Sets Definition}
 
-        The kill and gen set is defined using tuple of $<\textbf{variable,\; expression}>$ to differentiate definition of the same variables which during the execution could have the same result. The Transfer Function will compute the result of the expression by inserting in the dictionary the tuple $<\textbf{variable,\; constant \; value}>$. If in the point \textit{p} of the program the input dictionary does not contain some of the variables in the expression which has to be computed, the tuple $<variable,\; expression>$ is discarded from the output set. 
+        The \textbf{Kill} and \textbf{Gen-set} is defined using \textbf{tuples} $<\textbf{variable,\; expression}>$ to differentiate definitions of the same variables which could have the same result during the execution of the program. The Transfer Function will compute the result of the expression and insert in the dictionary the tuple $<\textbf{variable,\; constant \; value}>$ obtained. If at a certain point \textit{p} of the program the input dictionary does not contain some of the variables in the expression that needs to be computed, the tuple $<variable,\; expression>$ is discarded from the output set. 
         
-        Each basic block $BB_i$ inherits a set of expressions from its predecessor $BB_{i-1}$; this set makes up the block's input set $B_i$: $$In[BB_i] = Out[BB_{i-1}] \; \forall BB_i \in CFG : i \neq Entry$$
+        Each basic block $BB_i$ inherits a set of expressions from its \textbf{predecessor} $BB_{i-1}$; this set makes up the block's input set $B_i$: $$In[BB_i] = Out[BB_{i-1}] \; \forall BB_i \in CFG : i \neq Entry$$
         
-        Also, each block kills the tuple $<\textbf{variable,\; expression}>$ invalidated by its internal definitions. A tuple $<\textbf{variable,\; expression}>$ is killed by a basic block BB if the variable is redefined inside the block: $$Kill[BB_i] = \{ <variable,\; expression> \vert \; variable \; redefined \} \; \forall BB_i \in CFG$$
+        Also, each block \textbf{kills (globally)} the tuples $<\textbf{variable,\; expression}>$ invalidated by its internal definitions. A tuple $<\textbf{variable,\; expression}>$ is killed by a basic block \textbf{BB} if the variable is \textbf{defined} inside the block: $$Kill[BB_i] = \{ <variable,\; expression> : \; variable \; redefined \} \; \forall BB_i \in CFG$$
 
-        Lastly, the gen-set is defined as the set of tuple of $<\textbf{variable,\; expression}>$ whenever the BB's internal definition of the variable is a \textit{constant expression}, or rather a binary expression where one or both operands are variables whose constant value is known.
+        In other words, a tuple is killed if it is shadowed by a new definition of the variable, which would make the previous definition (the definition that generate) invalid.
 
-        Let's define \textit{K} as a set of constant values, and \textit{k} as a constant value, $\forall k \in K$, we can declare an \textit{Operand} with constant value as \textit{$Op_k$}.
+        Lastly, the \textbf{Gen-set} is defined as the set of tuple $<\textbf{variable,\; expression}>$ whenever the BB's internal definition of the variable is a \textit{constant expression}, or rather a \textbf{binary expression} where both operands are \textbf{variables} whose constant value is \textbf{known} or a \textbf{literal}.
+
+        Let's define \textit{K} as a set of constant values, and \textit{k} as a constant value, $\forall k \in K$, we can declare an \textit{Operand} with constant value $k$ as \textit{$Op_k$}.
         
-        The \textbf{Gen-set} based on these assumptions is the following:
-        
-        $$Gen[BB_i] = \{ <variable,\; expression> \vert \; \forall E_j \in BB_i\; \wedge \; Op_k \; \forall k \in K \} \; \forall BB_i \in CFG$$
+        The \textbf{Gen-set} based on these assumptions is the following: $$Gen[BB_i] = \{ <variable,\; expression > : \; \forall E_j = OP_{k_\alpha} \; \oplus \; OP_{k_\beta} \; \in BB_i\; \wedge \; Op_k \; \forall k \in K \}$$
+        $$\forall BB_i \; \in \; CFG, \; \forall \alpha, \; \beta \; \in \; \mathbb{N}, \; \forall k \in K$$
+
+        To cope with cases of redefinition of a previous definition's RHS -- e.g. $a=1$ after Figure \ref{fig:cp_iteration_image}'s BB7 --, the concept of \textit{definition freshness} is introduced. In order to avoid \textbf{conflicts}, Transfer Function's \textbf{union operator} must take into consideration that tuples coming from the gen-set are the newer ones, so they are more \textit{fresh} than the tuples coming from the $(In[BB_I] \setminus Kill[BB_i])$ set, favouring the former over the latter. The priority is given to gen-set's tuples by discarding tuples which have the same variable as first element, but are no longer fresh -- i.e. in case of a conflict, only the fresher tuple should survive.
         
     \section*{Illustrative Iteration}
 
         \begin{figure}[H]
             \centering
-            \includegraphics[width=0.25\linewidth]{assets/cp.png}
+            \includegraphics[width=0.4\linewidth]{assets/cp.png}
             \caption{Reference CFG}
             \label{fig:cp_iteration_image}
         \end{figure}
-
+        
         \begin{table}[H]
             \centering
+            \resizebox{8.5cm}{!}{
             \begin{tabular}{|c|c|c|}
                 \hline
                 \textbf{Basic Block Name} & \textbf{Gen(BB)} & \textbf{Kill(BB)} \\
                 \hline
-                \textbf{BB1}  & $<k, 2>$ & Ø \\
+                \textbf{BB1}  & $<k, 2>$ & $<k, a> , <k, k++>$ \\
                 \textbf{BB2}  & Ø & Ø \\
                 \textbf{BB3}  & $<a, k+2>$ & $<a, k*2>$ \\
                 \textbf{BB4}  & $<x, 5>$ & $<x, 8>$ , $<x, a+k>$ \\
@@ -319,15 +324,18 @@
                 \textbf{BB13} & Ø & Ø \\
                 \hline
             \end{tabular}
+            }
             \caption{Gen-Kill Table}
             \label{tab:cp_gen_kill_table}
         \end{table}
 
     \subsection*{Iteration 1}
-
+    
+        \vspace{0.1cm}
+        
         \begin{table}[H]
             \centering
-            \resizebox{\textwidth}{!}{
+            \resizebox{0.8\textwidth}{!}{
             \begin{tabular}{|c|c|c|}
                 \hline
                 \textbf{Node} & \textbf{In(BB)} & \textbf{Out(BB)} \\
@@ -358,8 +366,11 @@
     
     \subsection*{Iteration 2}
 
+        \vspace{0.1cm}
+
         \begin{table}[H]
             \centering
+            \resizebox{8.5cm}{!}{
             \begin{tabular}{|c|c|c|}
                 \hline
                 \textbf{Node} & \textbf{In(BB)} & \textbf{Out(BB)} \\
@@ -381,17 +392,21 @@
                 \textbf{Exit}  & $<a, 4>$ & \\
                 \hline
             \end{tabular}
+            }
             \caption{Input-Output Table, Iteration 2}
             \label{tab:cp_input_output_table2}
         \end{table}
-
-            In the BB10 the tuple of the gen set $<\textbf{x,\; a+k}>$ is discarded because the variable \textit{k} is not defined in the input dictionary.
             
+            The tuple of the gen set $<\textbf{k,\; k++}>$ is removed from the input set of BB8 by the intersection between the output sets of BB7 and BB12. The final solution contains only the variables whose value is always constant in a specific point of the program, the variable \textit{k} has a value which changes from one iteration to another thus it has to be removed.
+            In the BB10 the tuple of the gen set $<\textbf{x,\; a+k}>$ is discarded because the variable \textit{k} is not defined in the input dictionary.
     
     \subsection*{Iteration 3}
 
+        \vspace{0.1cm}
+        
         \begin{table}[H]
             \centering
+            \resizebox{8.5cm}{!}{
             \begin{tabular}{|c|c|c|}
                 \hline
                 \textbf{Node} & \textbf{In(BB)} & \textbf{Out(BB)} \\
@@ -413,13 +428,155 @@
                 \textbf{Exit}  & $<a, 4>$ & \\
                 \hline
             \end{tabular}
+            }
             \caption{Input-Output Table, Iteration 3}
             \label{tab:cp_input_output_table3}
         \end{table}
 
         The execution stops after the third iteration since there are no changes in the input and output sets.
     
+        \newpage
+        \chapter*{Constant Propagation With Fixed-size Domain}
+        \label{chap:Constant Propagation with Fixed-size Domain}
 
-        \subsection*{Constant Propagation With Fixed-size Domain}\label{chap:Constant Propagation with Fixed-size Domain}
+        \section*{Problem Definition}
 
+        The goal of \textbf{constant propagation} is to determine in which points of the program, a given variable, has a constant value.
+        
+        The information to be computed for each node \textbf{n} of the Control Flow Graph (\textbf{CFG}) is a set of pairs in the form $<\textbf{variable,\; literal}>$.
+        
+        If we have the pair $<\textbf{x,\; c}>$ at node \textit{n}, it means that x is guaranteed to have the value \textit{c} every time \textit{n} is reached during program execution.
+
+        The main difference, compared to the problem of the previous \textbf{\autoref{chap:Constant Propagation}}, is that the domain set is composed by variables defined using only \textbf{literals} as RHS, therefore \textbf{expressions} are \textbf{excluded}.
+        
+        \section*{DFA Solution}
+        
+        We defined the \textbf{domain} of the problem as a \textbf{set of definitions with literal as RHS, represented as tuples} $<\textbf{variable, \; literal}>$.
+        
+        The data flow is oriented \textbf{forward} because it's essential to reference past values of variables to ensure which ones remain constant.
+        
+        The \textbf{meet operator} is equivalent to \textbf{set intersection} because a variable is deemed constant only if it's confirmed across every potential path.
+        
+        Given that kind of meet operator, along with the need to keep the intersection with uncomputed interior points neutral, \textbf{interior points} are initialized according to the following formula: $Out[BB_i] = \mathbb{U} \; \forall i \neq Entry$.
+        
+        The analysis is kick-started by $Out[BB_{Entry}] = \emptyset$.
+        
+    \subsection*{Transfer Function's Sets Definition}
+
+        Each basic block $BB_i$ inherits a set of expressions from its \textbf{predecessor} $BB_{i-1}$; this set makes up the block's input set $B_i$: $$In[BB_i] = Out[BB_{i-1}] \; \forall BB_i \in CFG : i \neq Entry$$
+        
+        Also, each block \textbf{kills (globally)} the tuples $<\textbf{variable,\; literal}>$ invalidated by its internal definitions. A tuple $<\textbf{variable,\; literal}>$ is killed by a basic block \textbf{BB} if the variable is \textbf{redefined} inside the block: $$Kill[BB_i] = \{ <variable,\; literal> : \; variable \; redefined \; in\; BB_i\} \; \forall BB_i \in CFG$$
+
+        In other words, a tuple is killed if it is shadowed by a new definition of the variable, which would make the previous definition (the definition that generate) invalid.
+
+        Lastly, the \textbf{Gen-set} is defined as the set of tuple $<\textbf{variable,\; constant \; value }>$ whenever the BB's internal definition of the variable has a literal as RHS:
+        $$Gen[BB_i] = \{ <variable,\; literal > : \; \forall \;variable := literal\; \in BB_i\;\} \; \forall BB_i \in CFG$$
+        
+    \section*{Illustrative Iteration}
+
+        \begin{figure}[H]
+            \centering
+            \includegraphics[width=0.3\linewidth]{assets/cp.png}
+            \caption{Reference CFG}
+            \label{fig:cp_iteration_image}
+        \end{figure}
+        
+        \vspace{1cm}
+
+        \begin{table}[H]
+            \centering
+            \resizebox{8.5cm}{!}{
+            \begin{tabular}{|c|c|c|}
+                \hline
+                \textbf{Basic Block Name} & \textbf{Gen(BB)} & \textbf{Kill(BB)} \\
+                \hline
+                \textbf{BB1}  & $<k, 2>$ & Ø \\
+                \textbf{BB2}  & Ø & Ø \\
+                \textbf{BB3}  & Ø & Ø \\
+                \textbf{BB4}  & $<x, 5>$ & $<x, 8>$ \\
+                \textbf{BB5}  & Ø & Ø \\
+                \textbf{BB6}  & $<x, 8>$ & $<x, 5>$ \\
+                \textbf{BB7}  & Ø & $<k, 2>$ \\
+                \textbf{BB8}  & Ø & Ø \\
+                \textbf{BB9}  & $<b, 2>$ & Ø \\
+                \textbf{BB10} & Ø & $<x, 5>$ , $<x , 8>$ \\
+                \textbf{BB11} & Ø & Ø \\
+                \textbf{BB12} & Ø & $<k, 2>$ \\
+                \textbf{BB13} & Ø & Ø \\
+                \hline
+            \end{tabular}
+            }
+            \caption{Gen-Kill Table}
+            \label{tab:cp_gen_kill_table}
+        \end{table}
+
+
+    \subsection*{Iteration 1}
+    
+        \vspace{1cm}
+
+         \begin{table}[H]
+            \centering
+            \resizebox{8.5cm}{!}{
+            \begin{tabular}{|c|c|c|}
+                \hline
+                \textbf{Basic Block Name} & \textbf{In(BB)} & \textbf{Out(BB)} \\
+                \hline
+                \textbf{Entry}  & Ø & Ø \\
+                \textbf{BB1}    & Ø & $<k, 2>$ \\
+                \textbf{BB2}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB3}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB4}    & $<k, 2>$ & $<k, 2>$ , $<x, 5>$ \\
+                \textbf{BB5}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB6}    & $<k, 2>$ & $<k, 2>$ , $<x, 8>$ \\
+                \textbf{BB7}    & $<k, 2>$ & Ø \\
+                \textbf{BB8}    & Ø & Ø \\
+                \textbf{BB9}    & Ø & $<b, 2>$\\
+                \textbf{BB10}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB11}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB12}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB13}   & Ø & Ø \\
+                \textbf{Exit}   & Ø &  \\
+                \hline
+            \end{tabular}
+            }
+            \caption{Input-Output Table, Iteration 1}
+            \label{tab:cp_gen_kill_table}
+        \end{table}
+
+    \subsection*{Iteration 2}
+    
+        \vspace{1cm}
+
+         \begin{table}[H]
+            \centering
+            \resizebox{8.5cm}{!}{
+            \begin{tabular}{|c|c|c|}
+                \hline
+                \textbf{Basic Block Name} & \textbf{In(BB)} & \textbf{Out(BB)} \\
+                \hline
+                \textbf{Entry}  & Ø & Ø \\
+                \textbf{BB1}    & Ø & $<k, 2>$ \\
+                \textbf{BB2}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB3}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB4}    & $<k, 2>$ & $<k, 2>$ , $<x, 5>$ \\
+                \textbf{BB5}    & $<k, 2>$ & $<k, 2>$ \\
+                \textbf{BB6}    & $<k, 2>$ & $<k, 2>$ , $<x, 8>$ \\
+                \textbf{BB7}    & $<k, 2>$ & Ø \\
+                \textbf{BB8}    & Ø & Ø \\
+                \textbf{BB9}    & Ø & $<b, 2>$\\
+                \textbf{BB10}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB11}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB12}   & $<b, 2>$ & $<b, 2>$ \\
+                \textbf{BB13}   & Ø & Ø \\
+                \textbf{Exit}   & Ø &  \\
+                \hline
+            \end{tabular}
+            }
+            \caption{Input-Output Table, Iteration 2}
+            \label{tab:cp_gen_kill_table}
+        \end{table}
+
+        The execution stops after the second iteration since there is only one back-edge and the intersection between $Out[BB_7]$ and $Out[BB_{12}]$, keeps $In[BB_8]$ empty.  
+            
 \end{document}

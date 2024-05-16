@@ -94,6 +94,70 @@ Tabs must be expanded as **2 spaces**.
 
 ### 3. Constant Propagation
 
+## Third Assignment
+### Loop Invariant Code Motion
+
+Starting from the code of the previous exercise, **implement** a step of `**Loop-Invariant Code Motion (LICM)**`.
+- Do **not** use the acronym _LICM_ for the step.
+- It would **conflict** with the _official_ LLVM step.
+
+- **Move** the instructions that are **not dependent** on the loop's **control flow out of the loop** itself.
+- **Avoid redundantly** recalculating the same thing.
+- Since the bulk of a program's computation is contained within loops, there is _enormous_ **potential** for performance improvement.
+
+Which instructions are **loop-invariant** in this example?
+
+```mermaid
+graph TD
+    A[Header] -->B[A = B + C
+                   F = A + 2]
+    A[Header] -->C[E = 3]
+    C -->D[A = 1]
+    B -->D
+    C -->E[outside loop]
+    D -- YES-> B, C are defined outside of the loop -->A
+   
+```
+- **code motion:** with this practice we move loop invariant instructions inside the **preheader** block
+
+### LICM algorithm
+
+Observations:
+ - Loop-invariant instructions
+    -  Operands are defined outside the loop or through instructions that are loop-invariant
+ - Code motion
+    - Not all loop-invariant instructions can be moved into the preheader
+   
+Algorithm (three macro phases):
+ - We find the loop-invariant instructions
+ - We verify that the conditions for code motion are met
+ - We move the instructions
+
+**Conditions for Code Motion:**
+- General conditions (applicable to all transformations):
+- Correctness: Code movement does not alter the semantics of the program
+- Performance: The execution of the code is not slowed down
+
+### Code Motion algorithm
+
+**Given a set of nodes in a loop:**
+- Calculate the reaching definitions
+- Find the loop-invariant instructions
+- Compute the dominators (dominance tree)
+- Find the loop exits (successors outside the loop)
+- Instructions eligible for code motion:
+   - They are loop invariant
+   - They are located in blocks that dominate all loop exits
+   - They assign a value to variables not assigned elsewhere in the loop
+   - They are located in blocks that dominate all blocks in the loop using the variable to which a value is being assigned
+- Perform a depth-first search of the blocks
+   - Move the candidate instruction to the preheader if all invariant instructions on which it depends have been moved
+
+
+
+
+
+
 ## Contributors
  - Christofer Fanò [@ch-fano]
  - Francesco Mecatti [@mc-cat-tty]

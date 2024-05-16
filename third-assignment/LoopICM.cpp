@@ -34,11 +34,11 @@ void infoLog(Loop &l) {
   }
 }
 
-void licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
+bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   using namespace std;
 
-  using Granularity = Instruction*;
-  auto loopInvariantInstructions = unordered_set<Granularity>{};
+  auto loopInvariantInstructions = unordered_set<Instruction*>{};
+  auto liiDiscoveryOrder = vector<Instruction*>{};  ///< Must be order preserving
 
   // Be aware that this lambda marks phi-instructions as loop-invariant
   auto isOperandLI = [&l, &loopInvariantInstructions] (const Use &usee) {
@@ -57,15 +57,18 @@ void licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     if (isa<PHINode>(i)) return false;
 
     bool isInstrLI = true;
-    // If the loop-invariance condition holds for each operand
+    // If the loop-invariance condition holds for each operand, the instruction
+    // itself is loop-invariant.
     for (const auto &usee : i.operands()) isInstrLI &= isOperandLI(usee);
     return isInstrLI;
   };
   
-  // Extract loop-invariant instructions with iterative algo
+  // Extract loop-invariant instructions iteratively
   for (auto *bb : l.blocks()) {
     for (auto &i : *bb) {
-      if (isInstructionLI(i)) loopInvariantInstructions.insert(&i);
+      if (not isInstructionLI(i)) continue;
+      loopInvariantInstructions.insert(&i);
+      liiDiscoveryOrder.emplace_back(&i);
     }
   }
 
@@ -75,6 +78,9 @@ void licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     i->print(errs());
     errs() << "\n";
   }
+
+  // Make loopInvariantInstructions go out of scope. See clear-minimize paradigm.
+  unordered_set<decltype(loopInvariantInstructions)::value_type>{}.swap(loopInvariantInstructions);
 
   // Extract exit blocks from loop
   using Edge = pair<BasicBlock*, BasicBlock*>;
@@ -102,29 +108,31 @@ void licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   };
 
   // Discarding non-movable instructions
-  auto movableInstructions =
-    vector<Granularity>(
-      begin(loopInvariantInstructions),
-      end(loopInvariantInstructions)
-    );
-  movableInstructions.erase(
-    remove_if(begin(movableInstructions), end(movableInstructions), not_fn(isMovable)),
-    end(movableInstructions)
+  liiDiscoveryOrder.erase(
+    remove_if(begin(liiDiscoveryOrder), end(liiDiscoveryOrder), not_fn(isMovable)),
+    end(liiDiscoveryOrder)
   );
-  unordered_set<Granularity>().swap(loopInvariantInstructions);  // Make loopInvariantInstructions go out of scope
 
   // Printing movable instructions
   errs() << "MOVABLE INSTRUCTIONS\n";
-  for (const auto *i : movableInstructions) {
+  for (const auto *i : liiDiscoveryOrder) {
     i->print(errs());
     errs() << "\n";
   }
+
+  auto optimized = false;
+  decltype(auto) preheader = l.getLoopPreheader();
+  for (auto *i : liiDiscoveryOrder) {
+    i->moveBefore(preheader->getTerminator());
+    optimized |= true;
+  }
+
+  return optimized;
 }
 
 PreservedAnalyses LoopICM::run(Loop &l, LoopAnalysisManager &lam, LoopStandardAnalysisResults &lar, LPMUpdater &lu) {
   // infoLog(l);
 
-  licmOptimize(l, lar);
-
-  return PreservedAnalyses::all();
+  bool somethingOptimized = licmOptimize(l, lar);
+  return somethingOptimized ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

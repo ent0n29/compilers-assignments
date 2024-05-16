@@ -97,7 +97,7 @@ Tabs must be expanded as **2 spaces**.
 ## Third Assignment
 ### Loop Invariant Code Motion
 
-Starting from the code of the previous exercise, **implement** a step of `**Loop-Invariant Code Motion (LICM)**`.
+Starting from the code of the previous exercise, **implement** a step of `Loop-Invariant Code Motion (LICM)`.
 - Do **not** use the acronym _LICM_ for the step.
 - It would **conflict** with the _official_ LLVM step.
 

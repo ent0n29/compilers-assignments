@@ -36,6 +36,8 @@ void infoLog(Loop &l) {
 
 bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   using namespace std;
+  // Enable the following code to get the same
+  constexpr bool removeDeadDefinitions = true;
 
   auto loopInvariantInstructions = unordered_set<Instruction*>{};
   auto liiDiscoveryOrder = vector<Instruction*>{};  ///< Must be order preserving
@@ -47,7 +49,7 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     
     decltype(auto) i = dyn_cast<Instruction>(usee);
     
-    if (i and loopInvariantInstructions.count(i)) return true;
+    if (i and loopInvariantInstructions.contains(i)) return true;
     if (i and not l.contains(i)) return true;
 
     return false;
@@ -100,7 +102,7 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   auto isMovable = [&exitEdges, &dominators, &isDeadOutsideLoop] (const Instruction *instr) {
     for (const auto &edge : exitEdges)
       if (
-        not dominators.dominates(instr, edge.second)
+        not dominators.dominates(instr, edge.second)  // (BBinside, BBoutside)
         and not isDeadOutsideLoop(instr)
       ) return false;
     
@@ -120,11 +122,18 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     errs() << "\n";
   }
 
-  auto optimized = false;
+  bool optimized = false;
   decltype(auto) preheader = l.getLoopPreheader();
+  
   for (auto *i : liiDiscoveryOrder) {
+    if constexpr (removeDeadDefinitions)
+      if (i->getNumUses() == 0) {
+        i->eraseFromParent();
+        continue;
+      }
+
     i->moveBefore(preheader->getTerminator());
-    optimized |= true;
+    optimized = true;
   }
 
   return optimized;

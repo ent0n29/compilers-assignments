@@ -8,6 +8,7 @@
 #include <unordered_set>
 #include <vector>
 #include <functional>
+#include <stack>
 
 using namespace llvm;
 
@@ -66,11 +67,40 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   };
   
   // Extract loop-invariant instructions iteratively
-  for (auto *bb : l.blocks()) {
-    for (auto &i : *bb) {
-      if (not isInstructionLI(i)) continue;
+  auto processBB = [&l, &loopInvariantInstructions, &liiDiscoveryOrder,
+                    &isInstructionLI](BasicBlock &bb) {
+
+    for (auto *i : bb) {
+      if (not isInstructionLI(i)) 
+        continue;
       loopInvariantInstructions.insert(&i);
       liiDiscoveryOrder.emplace_back(&i);
+    }
+  }
+
+  // DFS to traverse the dominator tree and process each block
+  DominatorTree &DT = lar.DT;
+  auto *headerNode = DT.getNode(l.getHeader());
+  if (!headerNode)
+    return false;
+  
+  std::stack<DomTreeNode*> stack;
+  std::unordered_set<DomTreeNode*> visited;
+  stack.push(headerNode);
+
+  while(!stack.empty()) {
+    DomTreeNode* node = stack.top();
+    stack.pop();
+
+    if (!visited.insert(node).second)
+      continue;
+    
+    BasicBlock* bb = node->getBlock();
+    if (l.contains(bb))
+      processBB(*bb);
+    
+    for (auto *child : node->children) {
+        stack.push(child);
     }
   }
 

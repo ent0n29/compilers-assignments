@@ -9,6 +9,7 @@
 #include <vector>
 #include <functional>
 #include <stack>
+#include <queue>
 
 using namespace llvm;
 
@@ -103,6 +104,28 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
         stack.push(child);
     }
   }
+
+  // reverse breadth first search to collect all the dominators of a given node
+  auto collectDominators = [&DT](DomTreeNode* startNode) {
+    std::unordered_set<DomTreeNode*> dominators;
+    std::queue<DomTreeNode*> queue;
+    queue.push(startNode);
+
+    while (!queue.empty()) {
+      DomTreeNode* node = queue.front();
+      queue.pop();
+      if (!dominators.insert(node).second)
+        continue;
+      if (auto *idom = node->getIDom()) {
+        queue.push(idom);
+      }
+    }
+    return dominators;
+  }
+
+  // let's assume we want to collect all the dominators of the
+  // header node, for demonstration purposes
+  auto headerDominators = collectDominators(headerNode);
 
   // Printing loop-invariant instructions
   errs() << "LOOP-INVARIANT INSTRUCTIONS\n";

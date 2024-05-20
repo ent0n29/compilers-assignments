@@ -81,9 +81,6 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     errs() << "\n";
   }
 
-  // Make loopInvariantInstructions go out of scope. See clear-minimize paradigm.
-  unordered_set<decltype(loopInvariantInstructions)::value_type>{}.swap(loopInvariantInstructions);
-
   // Extract exit blocks from loop
   using Edge = pair<BasicBlock*, BasicBlock*>;
   auto exitEdges = SmallVector<Edge>{};
@@ -100,11 +97,12 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   };
 
   auto isMovable = [&exitEdges, &dominators, &isDeadOutsideLoop] (const Instruction *instr) {
-    for (const auto &edge : exitEdges)
+    for (const auto &edge : exitEdges) {
       if (
         not dominators.dominates(instr, edge.second)  // (BBinside, BBoutside)
         and not isDeadOutsideLoop(instr)
       ) return false;
+    }
     
     return true;
   };
@@ -122,15 +120,39 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
     errs() << "\n";
   }
 
-  bool optimized = false;
   decltype(auto) preheader = l.getLoopPreheader();
+
+  // Check that instr usees (use-definition chain) have been already moved
+  unordered_set<Instruction*> movedInstructions{};
+  function<bool(Instruction*)> dependenciesSatisfied =
+    [&loopInvariantInstructions, &movedInstructions, &dependenciesSatisfied] (Instruction *instr) {
+      // Base case
+      if (not loopInvariantInstructions.contains(instr)) return true;
+      if (not movedInstructions.contains(instr)) return false;
+
+      // Recursive case
+      for (auto &op : instr->operands()) {
+        auto *opInstr = dyn_cast<Instruction>(op);
+        if (opInstr and not dependenciesSatisfied(opInstr)) return false;
+      }
+
+      return true;
+  };
   
+  errs() << "MOVED\n";
+  bool optimized = false;
   for (auto *i : liiDiscoveryOrder) {
-    if constexpr (removeDeadDefinitions)
+    movedInstructions.insert(i);
+    if (not dependenciesSatisfied(i)) continue;
+    i->print(errs()); errs() << "\n";
+
+
+    if constexpr (removeDeadDefinitions) {
       if (i->getNumUses() == 0) {
         i->eraseFromParent();
         continue;
       }
+    }
 
     i->moveBefore(preheader->getTerminator());
     optimized = true;

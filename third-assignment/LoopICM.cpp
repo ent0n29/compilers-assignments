@@ -123,12 +123,11 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   decltype(auto) preheader = l.getLoopPreheader();
 
   // Check that instr usees (use-definition chain) have been already moved
-  unordered_set<Instruction*> movedInstructions{};
   function<bool(Instruction*)> dependenciesSatisfied =
-    [&loopInvariantInstructions, &movedInstructions, &dependenciesSatisfied] (Instruction *instr) {
+    [&loopInvariantInstructions, &liiDiscoveryOrder, &dependenciesSatisfied] (Instruction *instr) {
       // Base case
       if (not loopInvariantInstructions.contains(instr)) return true;
-      if (not movedInstructions.contains(instr)) return false;
+      if (find(begin(liiDiscoveryOrder), end(liiDiscoveryOrder), instr) == end(liiDiscoveryOrder)) return false;
 
       // Recursive case
       for (auto &op : instr->operands()) {
@@ -142,7 +141,6 @@ bool licmOptimize(Loop &l, LoopStandardAnalysisResults &lar) {
   errs() << "MOVED\n";
   bool optimized = false;
   for (auto *i : liiDiscoveryOrder) {
-    movedInstructions.insert(i);
     if (not dependenciesSatisfied(i)) continue;
     i->print(errs()); errs() << "\n";
 

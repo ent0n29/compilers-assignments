@@ -35,11 +35,10 @@ PreservedAnalyses LoopFusion::run(Function &F,FunctionAnalysisManager &AM) {
     Loop *prevLoop = nullptr;
     bool optimizable = false;
     for (auto *L : LI){
-        if(not prevLoop)
-            prevLoop = L;
-        else
+        if(prevLoop)
             optimizable = isAdjacent(prevLoop, L) 
                 and isControlFlowEquivalent(F, AM, prevLoop, L);
+        prevLoop = L;
     }
 
     // if (optimizable) do something...

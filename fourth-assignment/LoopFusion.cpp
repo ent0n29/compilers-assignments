@@ -28,6 +28,13 @@ bool isControlFlowEquivalent(Function &F, FunctionAnalysisManager &AM, Loop *pre
     return DT.dominates(prevHeader, nextHeader) and PDT.dominates(nextHeader, prevHeader);
 }
 
+void optimize(Loop *prevLoop, Loop *nextLoop){
+    
+    errs() << prevLoop->getName() << " and " << nextLoop->getName() << 
+        "are adjacent and control flow equivalent\n";
+    
+}
+
 
 PreservedAnalyses LoopFusion::run(Function &F,FunctionAnalysisManager &AM) {
     LoopInfo &LI = AM.getResult<LoopAnalysis>(F);
@@ -38,10 +45,12 @@ PreservedAnalyses LoopFusion::run(Function &F,FunctionAnalysisManager &AM) {
         if(prevLoop)
             optimizable = isAdjacent(prevLoop, L) 
                 and isControlFlowEquivalent(F, AM, prevLoop, L);
+            
+            if(optimizable) optimize(prevLoop, L);
+
+
         prevLoop = L;
     }
-
-    // if (optimizable) do something...
 
     return PreservedAnalyses::all();
 }

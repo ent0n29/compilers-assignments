@@ -1,64 +1,45 @@
-; ModuleID = 'doubleloop.bc'
+; ModuleID = 'doubleloop.ll'
 source_filename = "doubleloop.c"
 target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
 target triple = "x86_64-pc-linux-gnu"
 
-; Function Attrs: noinline nounwind optnone uwtable
+; Function Attrs: noinline nounwind uwtable
 define dso_local i32 @loop(i32 noundef %0, i32 noundef %1) #0 {
-  %3 = alloca i32, align 4
-  %4 = alloca i32, align 4
-  %5 = alloca i32, align 4
-  %6 = alloca i32, align 4
-  %7 = alloca i32, align 4
-  store i32 %0, ptr %3, align 4
-  store i32 %1, ptr %4, align 4
-  store i32 0, ptr %5, align 4
-  store i32 0, ptr %6, align 4
-  br label %8
+  br label %3
 
-8:                                                ; preds = %15, %2
-  %9 = load i32, ptr %6, align 4
-  %10 = icmp slt i32 %9, 12
-  br i1 %10, label %11, label %18
+3:                                                ; preds = %7, %2
+  %.02 = phi i32 [ 0, %2 ], [ %6, %7 ]
+  %.01 = phi i32 [ 0, %2 ], [ %8, %7 ]
+  %4 = icmp slt i32 %.01, 12
+  br i1 %4, label %5, label %9
 
-11:                                               ; preds = %8
-  %12 = load i32, ptr %3, align 4
-  %13 = load i32, ptr %5, align 4
-  %14 = add nsw i32 %13, %12
-  store i32 %14, ptr %5, align 4
-  br label %15
+5:                                                ; preds = %3
+  %6 = add nsw i32 %.02, %0
+  br label %7
 
-15:                                               ; preds = %11
-  %16 = load i32, ptr %6, align 4
-  %17 = add nsw i32 %16, 1
-  store i32 %17, ptr %6, align 4
-  br label %8, !llvm.loop !6
+7:                                                ; preds = %5
+  %8 = add nsw i32 %.01, 1
+  br label %3, !llvm.loop !6
 
-18:                                               ; preds = %8
-  store i32 0, ptr %7, align 4
-  br label %19
+9:                                                ; preds = %3
+  br label %10
 
-19:                                               ; preds = %26, %18
-  %20 = load i32, ptr %7, align 4
-  %21 = icmp slt i32 %20, 12
-  br i1 %21, label %22, label %29
+10:                                               ; preds = %14, %9
+  %.1 = phi i32 [ %.02, %9 ], [ %13, %14 ]
+  %.0 = phi i32 [ 0, %9 ], [ %15, %14 ]
+  %11 = icmp slt i32 %.0, 12
+  br i1 %11, label %12, label %16
 
-22:                                               ; preds = %19
-  %23 = load i32, ptr %4, align 4
-  %24 = load i32, ptr %5, align 4
-  %25 = add nsw i32 %24, %23
-  store i32 %25, ptr %5, align 4
-  br label %26
+12:                                               ; preds = %10
+  %13 = add nsw i32 %.1, %1
+  br label %14
 
-26:                                               ; preds = %22
-  %27 = load i32, ptr %7, align 4
-  %28 = add nsw i32 %27, 1
-  store i32 %28, ptr %7, align 4
-  br label %19, !llvm.loop !8
+14:                                               ; preds = %12
+  %15 = add nsw i32 %.0, 1
+  br label %10, !llvm.loop !8
 
-29:                                               ; preds = %19
-  %30 = load i32, ptr %5, align 4
-  ret i32 %30
+16:                                               ; preds = %10
+  ret i32 %.1
 }
 
 attributes #0 = { noinline nounwind uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }

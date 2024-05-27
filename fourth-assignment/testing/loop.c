@@ -10,10 +10,10 @@
 // il nostro passo non trasforma la IR e non genera output)
 //
 
-int g;
-int loop(int **a, int **b, int **c, int N) {
-    int i, j, ret=0;
-    int d[N][N];
+int g=4;
+int loop(int **a, int **b, int **c, int **d) {
+    int i=5, j=6, ret=0;
+    int N=10;
 
     for (i=0; i<N; i++)
         for (j=0; j<N; j++)

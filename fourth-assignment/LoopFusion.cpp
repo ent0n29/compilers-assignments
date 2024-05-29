@@ -3,6 +3,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ScalarEvolution.h"
+#include "llvm/IR/InstrTypes.h"
 using namespace llvm;
 
 
@@ -40,16 +41,19 @@ bool isControlFlowEquivalent(Function &F, FunctionAnalysisManager &AM, Loop *pre
 bool hasSameTripCount(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
     ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
 
-    // TO DO: with variables as UB it returns 0
-    auto prevExitCount = SE.getSmallConstantMaxTripCount(prevLoop);
-    auto nextExitCount = SE.getSmallConstantMaxTripCount(nextLoop);
+    auto prevBackedgeCount = SE.getBackedgeTakenCount(prevLoop);
+    auto nextBackedgeCount = SE.getBackedgeTakenCount(nextLoop);
 
-    errs() << "\nprevLoop: " << prevExitCount; 
-    errs() << "\nnextLoop: " << nextExitCount;
+    errs() << "\nprevLoop: "; 
+    prevBackedgeCount->print(errs()); 
+    errs() << "\nnextLoop: ";
+    nextBackedgeCount->print(errs());
+    errs() << "\n";
     
-    //if(isa<SCEVCouldNotCompute>(prevExitCount) or isa<SCEVCouldNotCompute>(nextExitCount)) return false;
+    //if(isa<SCEVCouldNotCompute>(prevBackedgeCount) or isa<SCEVCouldNotCompute>(nextBackedgeCount)) return false;
     
-    return prevExitCount == nextExitCount;
+    // returns true if SCEV objects are equal, false otherwise
+    return SE.isKnownPredicate(ICmpInst::ICMP_EQ, prevBackedgeCount, nextBackedgeCount);
 }
 
 Loop * optimize(Loop *prevLoop, Loop *nextLoop){

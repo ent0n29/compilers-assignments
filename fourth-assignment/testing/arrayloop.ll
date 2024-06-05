@@ -51,7 +51,7 @@ define dso_local void @twoloop(ptr noundef %0, ptr noundef %1, ptr noundef %2, p
   br label %33
 
 33:                                               ; preds = %23
-  %34 = add nsw i32 %.1, 2
+  %34 = add nsw i32 %.1, 1
   br label %21, !llvm.loop !8
 
 35:                                               ; preds = %21

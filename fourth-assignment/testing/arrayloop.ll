@@ -8,7 +8,7 @@ define dso_local void @twoloop(ptr noundef %0, ptr noundef %1, ptr noundef %2, p
   br label %6
 
 6:                                                ; preds = %18, %5
-  %.0 = phi i32 [ 0, %5 ], [ %19, %18 ]
+  %.0 = phi i32 [ 3, %5 ], [ %19, %18 ]
   %7 = icmp slt i32 %.0, %4
   br i1 %7, label %8, label %20
 

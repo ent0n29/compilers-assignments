@@ -1,6 +1,6 @@
 void twoloop(int a[], int b[], int c[], int d[], int n) {
     int i;
-    for (i=0; i<n; i++)
+    for (i=3; i<n; i++)
         a[i] = b[i] + c[i];
 
     for (i=0; i<n; i++)

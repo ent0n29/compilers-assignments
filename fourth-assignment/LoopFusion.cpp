@@ -58,47 +58,38 @@ bool hasSameTripCount(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, 
 }
 
 bool hasNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
-    DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
-    
     errs() << "Checking negative dependencies\n";
-    bool dependent = false;
-
-    //slide every instruction of nextLoop
-    for (auto *nextBB : nextLoop->blocks()){
-        for (auto &nextInst : *nextBB){
-            
-            // check dependencies only between loads and stores instructions
-            // as loops can have negative distance dependecies only by using arrays
-            if(isa<LoadInst>(nextInst) or isa<StoreInst>(nextInst)){
-                
-                // slide every instruction of prevLoop
-                for (auto *prevBB : prevLoop->blocks()){ 
-                    for (auto &prevInst : *prevBB) {
-                        
-                        // check dependencies only for loads and stores avoiding the function's call
-                        if(isa<LoadInst>(prevInst) or isa<StoreInst>(prevInst)){
-                            
-                            auto dep = DI.depends(&prevInst, &nextInst, true);
-                            
-                            errs() << "\nnextLoop: ";
-                            nextInst.print(errs());
-                            errs() << "\nprevLoop: ";
-                            prevInst.print(errs());
-                            errs() <<"\n" << dep->isDirectionNegative() << "\n";
-
-                            if (dep and dep->isDirectionNegative())
-                                dependent = true;
-
-                        }
-                    }
-                }
-
-            }
-
+    
+    DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
+    SmallVector<Instruction*> prevStores, prevLoads, nextLoads, nextStores;
+    
+    auto areDependent = [&DI] (Instruction *x, Instruction *y) {
+        return DI.depends(x, y, true) != nullptr;
+    };
+    
+    for (auto *bb : prevLoop->blocks()) {
+        for (auto &i : *bb) {
+            if (i.mayWriteToMemory()) prevStores.push_back(&i);
+            if (i.mayReadFromMemory()) prevLoads.push_back(&i);
         }
     }
 
-    return dependent;
+    for (auto *bb : nextLoop->blocks()) {
+        for (auto &i : *bb) {
+            if (i.mayWriteToMemory()) nextStores.push_back(&i);
+            if (i.mayReadFromMemory()) nextLoads.push_back(&i);        }
+    }
+
+    // Store-load, Load-store access patterns can cause problems
+    for (auto &prevI : prevStores) {
+        for (auto &nextI : nextLoads) if (areDependent(prevI, nextI)) return false;
+    }
+
+    for (auto &prevI : prevLoads) {
+        for (auto &nextI : nextStores) if (areDependent(prevI, nextI)) return false;
+    }
+
+    return true;
 }
 
 Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){

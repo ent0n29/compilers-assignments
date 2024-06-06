@@ -57,14 +57,20 @@ bool hasSameTripCount(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, 
     return SE.isKnownPredicate(ICmpInst::ICMP_EQ, prevBackedgeCount, nextBackedgeCount);
 }
 
+/**
+ * Checks for any R-W or W-R dependency between the pair of loops passed to the function.
+ * As in the original LLVM's loop-fusion pass, there is no real distinction between negative/positive/neutral dependencies.
+ * Any form of dependcy is prohibited in order to activate the optimization. 
+*/
 bool hasNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
     errs() << "Checking negative dependencies\n";
     
     DependenceInfo &DI = AM.getResult<DependenceAnalysis>(F);
     SmallVector<Instruction*> prevStores, prevLoads, nextLoads, nextStores;
-    
+
     auto areDependent = [&DI] (Instruction *x, Instruction *y) {
-        return DI.depends(x, y, true) != nullptr;
+        auto dep = DI.depends(x, y, true);
+        return dep and not dep->isConfused();
     };
     
     for (auto *bb : prevLoop->blocks()) {
@@ -130,6 +136,8 @@ PreservedAnalyses LoopFusion::run(Function &F, FunctionAnalysisManager &AM) {
                 and isControlFlowEquivalent(F, AM, prevLoop, *lit) 
                 and hasSameTripCount(F, AM, prevLoop, *lit)
                 and not hasNegativeDistanceDependencies(F, AM, prevLoop, *lit);
+        
+        errs() << optimizable << "\n";
         
         prevLoop = optimizable ? optimize(F, AM, prevLoop, *lit) : *lit;
 

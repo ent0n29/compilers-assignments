@@ -4,6 +4,7 @@
 #include "llvm/Analysis/PostDominators.h"
 #include "llvm/Analysis/ScalarEvolution.h"
 #include "llvm/Analysis/DependenceAnalysis.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 using namespace llvm;
 
 
@@ -80,12 +81,13 @@ bool hasNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM, L
                             
                             auto dep = DI.depends(&prevInst, &nextInst, true);
                             
-                            errs() << "\nnextLoop: ";
+                            /*errs() << "\nnextLoop: ";
                             nextInst.print(errs());
                             errs() << "\nprevLoop: ";
                             prevInst.print(errs());
-                            errs() <<"\n" << dep->isDirectionNegative() << "\n";
-
+                            if(dep) errs() << "\nDirection: " << dep->isDirectionNegative() << "\n";
+                            else errs() << "\nnullptr\n";
+                            */
                             if (dep and dep->isDirectionNegative())
                                 dependent = true;
 
@@ -102,22 +104,54 @@ bool hasNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM, L
 }
 
 Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
-    ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
-  
-    errs() << "Optimizable\n"; 
+
+    errs() << "Starting the Loop Fusion\n"; 
+
+    // replace the induction variable of the second loop with the one of the first
     
-    auto nextIV = nextLoop->getInductionVariable(SE);
+    auto prevIV = prevLoop->getCanonicalInductionVariable();
+    auto prevValueIV = dyn_cast<Value>(prevIV);
 
-/*   for(auto userIter = nextIV->user_begin(); userIter != nextIV->user_end(); ++userIter){
-        User *user = *userIter;
+    auto nextIV = nextLoop->getCanonicalInductionVariable();
+    auto nextValueIV = dyn_cast<Value>(nextIV);
+    
+    nextValueIV->replaceAllUsesWith(prevValueIV);
 
-        user->print(errs());
-        errs() << "\n";
-    }*/
 
+    // change the CFG 
+
+    auto prevHeader = prevLoop->getHeader();
+    auto prevLatch = prevLoop->getLoopLatch();
+    auto prevBody = prevLatch->getSinglePredecessor();
+
+    auto nextHeader = nextLoop->getHeader();
+    auto nextLatch = nextLoop->getLoopLatch();
+    auto nextBody = nextLatch->getSinglePredecessor();
+
+    // get the nextLoop's exit block
+    auto nextExit = nextLoop->getExitBlock();
+
+    // get the nextLoop's body entry block
+    BasicBlock* nextBodyEntry;
+    if (nextLoop->contains(nextHeader->getTerminator()->getSuccessor(0)))
+        nextBodyEntry = nextHeader->getTerminator()->getSuccessor(0);
+    else
+        nextBodyEntry = nextHeader->getTerminator()->getSuccessor(1);
+
+    
+    // change the successor of the prevHeader
+    prevHeader->getTerminator()->replaceSuccessorWith(nextLoop->getLoopPreheader(), nextExit);
+
+    // change the successor of the prevBody
+    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextBodyEntry);
+
+    // change the successor of the nextHeader
+    ReplaceInstWithInst(nextHeader->getTerminator(), BranchInst::Create(nextLatch));
+
+    // change the successor of the nextBody
+    nextBody->getTerminator()->replaceSuccessorWith(nextLatch, prevLatch);
 
     // when optmized the function must return the new fused loop 
-    // atm with no optimization returns the current loop 
     return prevLoop;
 }
 
@@ -129,6 +163,7 @@ PreservedAnalyses LoopFusion::run(Function &F, FunctionAnalysisManager &AM) {
 
     Loop *prevLoop = nullptr;
     bool optimizable = false;
+    bool modified = false;
     int num = 0;
 
     for (auto lit = LI.rbegin(); lit != LI.rend(); ++lit){
@@ -139,10 +174,11 @@ PreservedAnalyses LoopFusion::run(Function &F, FunctionAnalysisManager &AM) {
                 and isControlFlowEquivalent(F, AM, prevLoop, *lit) 
                 and hasSameTripCount(F, AM, prevLoop, *lit)
                 and not hasNegativeDistanceDependencies(F, AM, prevLoop, *lit);
-        
+            
+        if(optimizable) modified = true;
         prevLoop = optimizable ? optimize(F, AM, prevLoop, *lit) : *lit;
 
     }
 
-    return PreservedAnalyses::all();
+    return modified ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }

@@ -83,16 +83,19 @@ bool hasNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM, L
     for (auto *bb : nextLoop->blocks()) {
         for (auto &i : *bb) {
             if (i.mayWriteToMemory()) nextStores.push_back(&i);
-            if (i.mayReadFromMemory()) nextLoads.push_back(&i);        }
+            if (i.mayReadFromMemory()) nextLoads.push_back(&i);
+        }
     }
 
     // Store-load, Load-store access patterns can cause problems
     for (auto &prevI : prevStores) {
+        for (auto &nextI : nextStores) if (areDependent(prevI, nextI)) return false;
         for (auto &nextI : nextLoads) if (areDependent(prevI, nextI)) return false;
     }
 
-    for (auto &prevI : prevLoads) {
-        for (auto &nextI : nextStores) if (areDependent(prevI, nextI)) return false;
+    for (auto &nextI : nextStores) {
+        for (auto &prevI : prevStores) if (areDependent(prevI, nextI)) return false;
+        for (auto &prevI : prevLoads) if (areDependent(prevI, nextI)) return false;
     }
 
     return true;

@@ -7,36 +7,45 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 using namespace llvm;
 
+BasicBlock* getPreheaderOrGuard(Loop *l) {
+    return l->isGuarded() ?
+        l->getLoopGuardBranch()->getParent()
+        : l->getLoopPreheader();
+}
 
 bool isAdjacent(Loop *prevLoop, Loop *nextLoop){
-
     // if the loop has multiple exits the function returns null 
-    auto prevExitBB = prevLoop->getExitBlock(); 
+    auto prevExitBB = prevLoop->isGuarded() ? 
+        prevLoop->getExitBlock()->getSingleSuccessor()  // Get block after critical edge
+        : prevLoop->getExitBlock();
 
     // loop with multiple exits can't be fused
     if (not prevExitBB) return false; 
 
     // if the loop is guarded the entry block to check 
     // is the block which contains the guard branch
-    auto nextPreheader = nextLoop->isGuarded() ? 
-        nextLoop->getLoopGuardBranch()->getParent() : nextLoop->getLoopPreheader();
+    auto nextEntryBB = getPreheaderOrGuard(nextLoop);
+    
+    // prevExitBB->print(errs());
+    // nextPreheader->print(errs());
 
-    prevExitBB->print(errs());
-    nextPreheader->print(errs());
-    errs() << "Result: " << (prevExitBB == nextPreheader);
-    return prevExitBB == nextPreheader;
+    auto ret = (prevExitBB == nextEntryBB);
+    errs() << "Are adjacent? " << ret << "\n";
+    return ret;
 }
 
 bool isControlFlowEquivalent(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
     DominatorTree &DT = AM.getResult<DominatorTreeAnalysis>(F);
     PostDominatorTree &PDT = AM.getResult<PostDominatorTreeAnalysis>(F);
     
-    auto prevPreheader = prevLoop->getLoopPreheader();
-    auto nextPreheader = nextLoop->getLoopPreheader();
+    auto prevPreheader = getPreheaderOrGuard(prevLoop);
+    auto nextPreheader = getPreheaderOrGuard(nextLoop);
 
     // return true iff the prevLoop dominates the nextLoop
     // and iff the nextLoop postdominates the prevLoop
-    return DT.dominates(prevPreheader, nextPreheader) and PDT.dominates(nextPreheader, prevPreheader);
+    auto ret = DT.dominates(prevPreheader, nextPreheader) and PDT.dominates(nextPreheader, prevPreheader);
+    errs() << "Are CF equivalent? " << ret << "\n";
+    return ret;
 }
 
 bool hasSameTripCount(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
@@ -55,7 +64,9 @@ bool hasSameTripCount(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, 
     if(isa<SCEVCouldNotCompute>(prevBackedgeCount) or isa<SCEVCouldNotCompute>(nextBackedgeCount)) return false;
     
     // returns true if SCEV objects are equal, false otherwise
-    return SE.isKnownPredicate(ICmpInst::ICMP_EQ, prevBackedgeCount, nextBackedgeCount);
+    auto ret = SE.isKnownPredicate(ICmpInst::ICMP_EQ, prevBackedgeCount, nextBackedgeCount);
+    errs() << "Have same TC? " << ret << "\n";
+    return ret;
 }
 
 /**
@@ -103,22 +114,22 @@ bool hasNotNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM
 }
 
 Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
-
-    errs() << "Starting the Loop Fusion\n"; 
+    ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
+    errs() << "Starting the Loop Fusion\n";
 
     // replace the induction variable of the second loop with the one of the first
     
-    auto prevIV = prevLoop->getCanonicalInductionVariable();
+    auto prevIV = prevLoop->getInductionVariable(SE);
     auto prevValueIV = dyn_cast<Value>(prevIV);
 
-    auto nextIV = nextLoop->getCanonicalInductionVariable();
+    auto nextIV = nextLoop->getInductionVariable(SE);
     auto nextValueIV = dyn_cast<Value>(nextIV);
     
     nextValueIV->replaceAllUsesWith(prevValueIV);
+    nextIV->eraseFromParent();
 
 
     // change the CFG 
-
     auto prevLatch = prevLoop->getLoopLatch();
     auto prevBody = prevLatch->getSinglePredecessor();
     auto prevExit = prevLoop->getExitBlock();
@@ -134,22 +145,21 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     // get the nextLoop's body entry block
     auto nextBodyEntry = nextPreheader->getSingleSuccessor();
 
-    // change the successor of the prevBody
-    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextBodyEntry);
+    prevLatch->getTerminator()->setSuccessor(1, nextExit);
 
-    // change the successor of the nextPreheader
-    nextPreheader->getTerminator()->replaceSuccessorWith(nextBodyEntry, nextLatch);
+    // change the successor of the prevBody
+    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextPreheader);
+    nextPreheader->replacePhiUsesWith(prevLatch, prevBody);
 
     // change the successor of the nextBody
     nextBody->getTerminator()->replaceSuccessorWith(nextLatch, prevLatch);
 
-    nextLatch->getTerminator()->replaceSuccessorWith(nextBody, nextPreheader);
+    // nextLatch->getTerminator()->replaceSuccessorWith(nextBody, nextPreheader);
+    // prevExit->getTerminator()->setSuccessor(0, nextExit);
 
-    prevExit->getTerminator()->setSuccessor(0, nextExit);
+    // if(prevGuard) prevGuard->setSuccessor(1, nextExit);
 
-    if(prevGuard) prevGuard->setSuccessor(1, nextExit);
-
-
+    EliminateUnreachableBlocks(F);
 
     // when optmized the function must return the new fused loop 
     return prevLoop;

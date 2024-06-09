@@ -164,7 +164,7 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     // Clean up unreachable blocks
     EliminateUnreachableBlocks(F);
 
-    // Return the first loop of the fused block 
+    // Return the first loop of the fused block
     return prevLoop;
 }
 

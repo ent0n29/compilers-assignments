@@ -112,7 +112,7 @@ bool hasNotNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM
     return true;
 }
 
-Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *nextLoop){
+Loop * optimize(Function &F, FunctionAnalysisManager &AM, LoopInfo &LI, Loop *prevLoop, Loop *nextLoop){
     ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
     errs() << "Starting the Loop Fusion\n";
 
@@ -129,6 +129,12 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     auto nextBody = nextLatch->getSinglePredecessor();
     auto nextBodyEntry = nextPreheader->getSingleSuccessor();
     auto nextExit = nextLoop->getExitBlock();
+
+    // retrieve the BB of the nextLoop's
+    auto toBeAdded = nextLoop->getBlocksVector();
+    
+    // remove the nextLoop's latch to keep only the body BB
+    toBeAdded.erase(remove(toBeAdded.begin(), toBeAdded.end(), nextLatch), toBeAdded.end());
 
     // Update next loop's induction var with the one from prev loop
     auto prevIV = prevLoop->getInductionVariable(SE);
@@ -164,6 +170,11 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     // Clean up unreachable blocks
     EliminateUnreachableBlocks(F);
 
+    // erase nextLoop and add its body to prevLoop
+    LI.erase(nextLoop);
+    for (auto *bb : toBeAdded)
+        prevLoop->addBasicBlockToLoop(bb, LI);
+
     // Return the first loop of the fused block
     return prevLoop;
 }
@@ -189,7 +200,7 @@ PreservedAnalyses LoopFusion::run(Function &F, FunctionAnalysisManager &AM) {
                 and hasNotNegativeDistanceDependencies(F, AM, prevLoop, *lit);
             
         if(optimizable) modified = true;
-        prevLoop = optimizable ? optimize(F, AM, prevLoop, *lit) : *lit;
+        prevLoop = optimizable ? optimize(F, AM, LI, prevLoop, *lit) : *lit;
 
     }
 

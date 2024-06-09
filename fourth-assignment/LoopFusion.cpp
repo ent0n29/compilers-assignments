@@ -121,7 +121,6 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, LoopInfo &LI, Loop *pr
     auto prevLatch = prevLoop->getLoopLatch();
     auto prevBody = prevLatch->getSinglePredecessor();
     auto prevBodyEntry = prevPreheder->getSingleSuccessor();
-    auto prevExit = prevLoop->getExitBlock();
     auto prevGuard = prevLoop->getLoopGuardBranch();
 
     auto nextPreheader = nextLoop->getLoopPreheader();
@@ -135,6 +134,7 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, LoopInfo &LI, Loop *pr
     
     // remove the nextLoop's latch to keep only the body BB
     toBeAdded.erase(remove(toBeAdded.begin(), toBeAdded.end(), nextLatch), toBeAdded.end());
+    toBeAdded.push_back(nextPreheader);
 
     // Update next loop's induction var with the one from prev loop
     auto prevIV = prevLoop->getInductionVariable(SE);
@@ -149,6 +149,8 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, LoopInfo &LI, Loop *pr
     // Move phi nodes from next loop's body to prev one
     nextBodyEntry->replacePhiUsesWith(nextLatch, prevLatch);
     nextBodyEntry->replacePhiUsesWith(nextPreheader, prevPreheder);
+    nextPreheader->replacePhiUsesWith(nextPreheader->getSinglePredecessor(), prevBody);
+    nextExit->replacePhiUsesWith(nextLatch, prevLatch);
     
     SmallVector<Instruction*> toBeMoved;
     for (Instruction &nextInst : *nextBodyEntry) {
@@ -162,9 +164,9 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, LoopInfo &LI, Loop *pr
 
     // Edit CFG to reflect fusion changes
     prevLatch->getTerminator()->setSuccessor(1, nextExit);
-    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextBodyEntry);
-    nextPreheader->replacePhiUsesWith(prevLatch, prevBody);
+    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextPreheader);
     nextBody->getTerminator()->replaceSuccessorWith(nextLatch, prevLatch);
+    nextLatch->getTerminator()->replaceSuccessorWith(nextExit, nextLatch);
     if(prevGuard) prevGuard->setSuccessor(1, nextExit);
 
     // Clean up unreachable blocks

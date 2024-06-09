@@ -81,8 +81,7 @@ bool hasNotNegativeDistanceDependencies(Function &F, FunctionAnalysisManager &AM
     SmallVector<Instruction*> prevStores, prevLoads, nextLoads, nextStores;
 
     auto areDependent = [&DI] (Instruction *x, Instruction *y) {
-        auto d = DI.depends(x, y, true);
-        return d and not d->isConfused();
+        return DI.depends(x, y, true);
     };
     
     for (auto *bb : prevLoop->blocks()) {
@@ -117,8 +116,21 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     ScalarEvolution &SE = AM.getResult<ScalarEvolutionAnalysis>(F);
     errs() << "Starting the Loop Fusion\n";
 
-    // replace the induction variable of the second loop with the one of the first
-    
+    // Get CFG blocks 
+    auto prevPreheder = prevLoop->getLoopPreheader();
+    auto prevLatch = prevLoop->getLoopLatch();
+    auto prevBody = prevLatch->getSinglePredecessor();
+    auto prevBodyEntry = prevPreheder->getSingleSuccessor();
+    auto prevExit = prevLoop->getExitBlock();
+    auto prevGuard = prevLoop->getLoopGuardBranch();
+
+    auto nextPreheader = nextLoop->getLoopPreheader();
+    auto nextLatch = nextLoop->getLoopLatch();
+    auto nextBody = nextLatch->getSinglePredecessor();
+    auto nextBodyEntry = nextPreheader->getSingleSuccessor();
+    auto nextExit = nextLoop->getExitBlock();
+
+    // Update next loop's induction var with the one from prev loop
     auto prevIV = prevLoop->getInductionVariable(SE);
     auto prevValueIV = dyn_cast<Value>(prevIV);
 
@@ -128,40 +140,31 @@ Loop * optimize(Function &F, FunctionAnalysisManager &AM, Loop *prevLoop, Loop *
     nextValueIV->replaceAllUsesWith(prevValueIV);
     nextIV->eraseFromParent();
 
+    // Move phi nodes from next loop's body to prev one
+    nextBodyEntry->replacePhiUsesWith(nextLatch, prevLatch);
+    nextBodyEntry->replacePhiUsesWith(nextPreheader, prevPreheder);
+    
+    SmallVector<Instruction*> toBeMoved;
+    for (Instruction &nextInst : *nextBodyEntry) {
+        nextInst.print(errs());
+        errs() << "\n";
+        if (isa<PHINode>(nextInst)) toBeMoved.emplace_back(&nextInst);
+    }
 
-    // change the CFG 
-    auto prevLatch = prevLoop->getLoopLatch();
-    auto prevBody = prevLatch->getSinglePredecessor();
-    auto prevExit = prevLoop->getExitBlock();
-    auto prevGuard = prevLoop->getLoopGuardBranch();
+    const auto &movePoint = prevBodyEntry->getFirstNonPHI();
+    for (auto *i : toBeMoved) i->moveBefore(movePoint);
 
-    auto nextPreheader = nextLoop->getLoopPreheader();
-    auto nextLatch = nextLoop->getLoopLatch();
-    auto nextBody = nextLatch->getSinglePredecessor();
-
-    // get the nextLoop's exit block
-    auto nextExit = nextLoop->getExitBlock();
-
-    // get the nextLoop's body entry block
-    auto nextBodyEntry = nextPreheader->getSingleSuccessor();
-
+    // Edit CFG to reflect fusion changes
     prevLatch->getTerminator()->setSuccessor(1, nextExit);
-
-    // change the successor of the prevBody
-    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextPreheader);
+    prevBody->getTerminator()->replaceSuccessorWith(prevLatch, nextBodyEntry);
     nextPreheader->replacePhiUsesWith(prevLatch, prevBody);
-
-    // change the successor of the nextBody
     nextBody->getTerminator()->replaceSuccessorWith(nextLatch, prevLatch);
+    if(prevGuard) prevGuard->setSuccessor(1, nextExit);
 
-    // nextLatch->getTerminator()->replaceSuccessorWith(nextBody, nextPreheader);
-    // prevExit->getTerminator()->setSuccessor(0, nextExit);
-
-    // if(prevGuard) prevGuard->setSuccessor(1, nextExit);
-
+    // Clean up unreachable blocks
     EliminateUnreachableBlocks(F);
 
-    // when optmized the function must return the new fused loop 
+    // Return the first loop of the fused block 
     return prevLoop;
 }
 
